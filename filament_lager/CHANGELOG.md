@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.3.2
+
+- Dunkles Design ist Standard auf allen Geräten
+- Schalter Hell/Dunkel oben rechts, wird pro Home-Assistant-Benutzer gespeichert und gilt auf allen Geräten
+
 ## 1.3.1
 
 - Lagerplatz pro Rolle im Fenster „☰“ änderbar

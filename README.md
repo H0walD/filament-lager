@@ -33,6 +33,7 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 - **Bestätigung**: jedes Ein- und Ausbuchen von Hand fragt vorher nach.
 - **Filter**: nach Hersteller, Material, Farbfamilie und Lagerort, jeweils mit Mehrfachauswahl.
 - **Benutzerrechte**: pro Home-Assistant-Benutzer einstellbar, wer nur schauen, erfassen oder auch bearbeiten darf.
+- **Hell oder dunkel**: standardmäßig dunkel, oben rechts umschaltbar. Die Wahl gilt pro Benutzer auf allen Geräten.
 - **Aktuell**: die Seite aktualisiert sich alle 15 Sekunden von selbst und funktioniert auch auf dem Handy und über Nabu Casa.
 
 ## Bilder

@@ -20,6 +20,18 @@ const VIEW = 1, ADD = 2, EDIT = 3, ADMIN = 4;
 const LEVELS = ["Kein Zugriff", "Ansehen", "Erfassen", "Bearbeiten", "Admin"];
 const can = (level) => (state.me?.level ?? 0) >= level;
 
+// Hell/Dunkel: pro Benutzer im Server gespeichert, damit es auf allen Geräten gleich aussieht.
+function setTheme(theme, save) {
+  theme = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme;
+  $("#themeBtn").textContent = theme === "dark" ? "☀ Hell" : "🌙 Dunkel";
+  try { localStorage.setItem("theme", theme); } catch { /* egal */ }
+  if (save) api("api/me", { method: "POST", body: JSON.stringify({ theme }) }).catch(() => {});
+}
+
+$("#themeBtn").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
+setTheme(document.documentElement.dataset.theme);
+
 function applyRights() {
   document.body.classList.toggle("can-add", can(ADD));
   document.body.classList.toggle("can-edit", can(EDIT));
@@ -178,6 +190,7 @@ function cartFor(g) {
 async function load(quiet) {
   // Rechte bei jedem Abruf auffrischen, damit Änderungen durch den Admin ohne Neuladen greifen.
   const me = await api("api/me").catch(() => state.me);
+  if (me?.theme && me.theme !== document.documentElement.dataset.theme) setTheme(me.theme);
   if (me && me.level !== state.me?.level) {
     state.me = me;
     applyRights();
@@ -1235,6 +1248,7 @@ async function loadUsers() {
 // Start: erst die eigenen Rechte holen, dann die Daten.
 (async () => {
   state.me = await api("api/me").catch(() => ({ level: 0 }));
+  if (state.me.theme) setTheme(state.me.theme);
   applyRights();
   try {
     const saved = JSON.parse(localStorage.getItem("filter") || "{}");

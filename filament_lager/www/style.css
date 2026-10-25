@@ -10,16 +10,17 @@
   --danger: #dc2626;
   --chip: #eceef1;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #15171a;
-    --card: #1f2226;
-    --text: #e8eaed;
-    --muted: #9aa0a6;
-    --border: #2f3338;
-    --chip: #2a2e33;
-  }
+/* Dunkel ist Standard; hell nur, wenn oben umgeschaltet. */
+:root[data-theme="dark"] {
+  --bg: #15171a;
+  --card: #1f2226;
+  --text: #e8eaed;
+  --muted: #9aa0a6;
+  --border: #2f3338;
+  --chip: #2a2e33;
+  color-scheme: dark;
 }
+.themeBtn { margin-left: auto; padding: 4px 10px; font-size: 13px; }
 * { box-sizing: border-box; }
 body {
   margin: 0;

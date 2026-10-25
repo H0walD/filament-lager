@@ -211,7 +211,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {"detail": "Dafür fehlt dir die Berechtigung", "level": self.user["level"]})
         try:
             if path == "/api/me":
-                return self.send(200, {"name": self.user["name"], "level": self.user["level"]})
+                if self.command == "POST":
+                    return self.save_theme()
+                return self.send(200, {"name": self.user["name"], "level": self.user["level"], "theme": self.user.get("theme")})
             if path == "/users":
                 return self.users()
             if path.startswith("/api/inventory/"):
@@ -287,6 +289,18 @@ class Handler(BaseHTTPRequestHandler):
             self.command, rel, body or None, self.headers.get("Content-Type")
         )
         self.send(status, data, ctype)
+
+    def save_theme(self):
+        # Hell/Dunkel je Home-Assistant-Benutzer merken, damit es auf allen Geräten gleich ist.
+        theme = (json.loads(self.read_body() or b"{}") or {}).get("theme")
+        if theme not in ("light", "dark"):
+            return self.send(400, {"detail": "Unbekanntes Design"})
+        if self.user.get("id"):
+            with USERS_LOCK:
+                users = load_users()
+                users.setdefault(self.user["id"], {})["theme"] = theme
+                save_users(users)
+        return self.send(200, {"theme": theme})
 
     def users(self):
         # Nur anzeigen: Rechte werden in der App-Konfiguration von Home Assistant vergeben.

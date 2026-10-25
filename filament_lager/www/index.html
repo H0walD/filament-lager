@@ -1,6 +1,7 @@
 <!doctype html>
-<html lang="de">
+<html lang="de" data-theme="dark">
 <head>
+<script>try { document.documentElement.dataset.theme = localStorage.getItem("theme") || "dark"; } catch (e) { /* bleibt dunkel */ }</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Filament-Lager</title>
@@ -13,6 +14,7 @@
     <h1><img src="icon.png" alt="" class="appIcon">Filament-Lager</h1>
     <span id="meInfo" class="muted"></span>
     <span id="updated" class="muted"></span>
+    <button id="themeBtn" class="themeBtn" type="button" title="Hell oder dunkel"></button>
   </div>
   <nav class="tabs">
     <button class="tab active" data-tab="stock">Lager <span id="stockCount" class="pill"></span></button>
