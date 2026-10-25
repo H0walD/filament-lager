@@ -219,3 +219,4 @@ dialog.wide { width: min(620px, 96vw); }
   .rollEdit { flex-direction: column; align-items: stretch; }
   .tileActions { flex-wrap: wrap; }
 }
+.chipBox p { margin: 0; }

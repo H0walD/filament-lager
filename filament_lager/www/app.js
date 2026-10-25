@@ -1075,6 +1075,9 @@ function rollCard(s) {
     <div class="bar"><span style="width:${pct}%"></span></div>
     <div class="tileInfo"><span>Rest <b>${kg(remaining(s))}</b> von ${kg(s.label_weight || 0)}</span><span>${s.cost_per_kg ? money(rollValue(s)) : ""}</span></div>
     <div class="rollEdit need-edit">
+      <label>Lagerplatz${a ? " (nach dem Herausnehmen)" : ""}<select data-place="${s.id}">${placeOptions(s)}</select></label>
+    </div>
+    <div class="rollEdit need-edit">
       <label>Restgewicht (g)<input type="number" min="0" step="1" data-rest="${s.id}" value="${Math.round(remaining(s))}"></label>
       <label>oder gewogen mit Spule (g)<input type="number" min="0" step="1" data-gross="${s.id}" placeholder="Spule ${core} g"></label>
       <button type="button" class="primary" data-act="saveWeight" data-roll="${s.id}">Speichern</button>
@@ -1089,11 +1092,42 @@ function rollCard(s) {
   </div>`;
 }
 
+function placeOptions(s) {
+  const current = s.location_id || "";
+  const opts = [`<option value="">— kein Lagerplatz —</option>`, ...(state.locationList || []).map((l) => `<option value="${l.id}">${esc(l.name)}</option>`)];
+  // Alter Freitext-Lagerplatz ohne Bambuddy-Ort bleibt sichtbar, bis ein Ort gewählt wird.
+  if (!current && s.storage_location) opts.splice(1, 0, `<option value="" selected>${esc(s.storage_location)}</option>`);
+  return opts.join("").replace(`value="${current}">`, `value="${current}" selected>`);
+}
+
+async function savePlace(s, select) {
+  const id = parseInt(select.value, 10) || null;
+  const name = id ? state.locations?.get(id) : null;
+  const ok = await askConfirm("Lagerplatz ändern", `<div class="confirmLine">${dot(s.rgba, 32)}<span><b>${esc(rollName(s))}</b> · Rolle ${s.id}</span></div>
+    <p class="confirmNote">Lagerplatz: <s>${esc(spoolPlaceName(s) || "keiner")}</s> → <b>${esc(name || "kein Lagerplatz")}</b></p>`, "Speichern");
+  if (!ok) {
+    select.innerHTML = placeOptions(s);
+    return;
+  }
+  await api(`api/inventory/spools/${s.id}`, { method: "PATCH", body: JSON.stringify({ location_id: id, storage_location: name }) });
+  toast(`Lagerplatz ${name || "entfernt"}`);
+}
+
+function spoolPlaceName(s) {
+  return (s.location_id && state.locations?.get(s.location_id)) || s.storage_location || "";
+}
+
+$("#rollList").addEventListener("change", (ev) => {
+  const id = ev.target.dataset.place;
+  const s = id && state.spools.find((x) => String(x.id) === id);
+  if (s) run(() => savePlace(s, ev.target));
+});
+
 function renderRolls() {
   const g = state.groups.find((x) => x.key === rollGroupKey);
   if (!g) return $("#rollDialog").close();
   // Eingaben, die gerade getippt werden, nicht beim Auffrischen überschreiben.
-  if ($("#rollList").contains(document.activeElement) && document.activeElement.tagName === "INPUT") return;
+  if ($("#rollList").contains(document.activeElement) && ["INPUT", "SELECT"].includes(document.activeElement.tagName)) return;
   $("#rollTitle").innerHTML = `${dot(g.rgba, 28)} ${esc(g.color_name || "Ohne Farbname")} <span class="muted">${esc([g.brand, g.material, g.subtype].filter(Boolean).join(" "))}</span>`;
   const list = [...g.spools].sort((a, b) => (state.inPrinter.has(b.id) - state.inPrinter.has(a.id)) || (b.weight_used || 0) - (a.weight_used || 0));
   $("#rollList").innerHTML = list.map(rollCard).join("");

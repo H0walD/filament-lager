@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.3.1
+
+- Lagerplatz pro Rolle im Fenster „☰“ änderbar
+
 ## 1.3.0
 
 - Rollen in den Drucker einlegen (AMS-Platz oder externe Spule) und wieder herausnehmen, damit Bambuddy auch bei Rollen ohne Chip den Verbrauch abzieht
