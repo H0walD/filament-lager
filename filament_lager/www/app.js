@@ -1,0 +1,931 @@
+"use strict";
+
+// Alle Adressen sind relativ, damit die Seite hinter dem Home-Assistant-Ingress läuft.
+const REFRESH_MS = 15000;
+const LOW_GRAMS = 300;
+
+const state = {
+  spools: [],
+  shop: [],
+  groups: [],
+  filter: { text: "", brand: [], material: [], color: [], place: [] },
+  logoVersion: Date.now(),
+  loaded: false,
+};
+
+const $ = (sel) => document.querySelector(sel);
+
+// Rechte-Stufen wie im Server: 0 kein Zugriff, 1 ansehen, 2 erfassen, 3 bearbeiten, 4 Admin.
+const VIEW = 1, ADD = 2, EDIT = 3, ADMIN = 4;
+const LEVELS = ["Kein Zugriff", "Ansehen", "Erfassen", "Bearbeiten", "Admin"];
+const can = (level) => (state.me?.level ?? 0) >= level;
+
+function applyRights() {
+  document.body.classList.toggle("can-add", can(ADD));
+  document.body.classList.toggle("can-edit", can(EDIT));
+  document.body.classList.toggle("is-admin", can(ADMIN));
+  const blocked = !can(VIEW);
+  $("main").querySelectorAll("section").forEach((s) => s.classList.toggle("blocked", blocked));
+  $("#noAccess").classList.toggle("hidden", !blocked);
+  $(".tabs").classList.toggle("hidden", blocked);
+  $("#meInfo").textContent = state.me?.name && state.me.name !== "lokal" ? `${state.me.name} · ${LEVELS[state.me.level]}` : "";
+}
+const norm = (s) => (s || "").toString().trim().toLowerCase();
+const esc = (s) => (s ?? "").toString().replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const kg = (g) => (g >= 1000 ? (g / 1000).toFixed(g >= 10000 ? 0 : 1).replace(".", ",") + " kg" : Math.round(g) + " g");
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: opts.body && !(opts.body instanceof Blob) ? { "Content-Type": "application/json", ...(opts.headers || {}) } : opts.headers,
+  });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!res.ok) {
+    const detail = data && data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : res.statusText;
+    throw new Error(detail || "Fehler " + res.status);
+  }
+  return data;
+}
+
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.remove("hidden");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.add("hidden"), 2600);
+}
+
+function banner(msg) {
+  const b = $("#banner");
+  if (!msg) return b.classList.add("hidden");
+  b.innerHTML = msg;
+  b.classList.remove("hidden");
+}
+
+// ---------- Daten ----------
+
+function groupKey(s) {
+  // Groß-/Kleinschreibung, Leerzeichen und Bindestriche zählen nicht, so landen gleiche Sorten in einer Kachel.
+  return [squash(s.brand), squash(s.material), squash(s.subtype), squash(s.color_name)].join("|");
+}
+
+function remaining(s) {
+  return Math.max(0, (s.label_weight || 0) - (s.weight_used || 0));
+}
+
+function spoolPlace(s) {
+  if (state.inPrinter?.has(s.id)) return "";
+  return (s.location_id && state.locations?.get(s.location_id)) || s.storage_location || "";
+}
+
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(/Z|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + "Z");
+  return isNaN(d) ? "" : d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function buildGroups() {
+  const map = new Map();
+  for (const s of state.spools) {
+    if (s.archived_at) continue;
+    const key = groupKey(s);
+    let g = map.get(key);
+    if (!g) {
+      g = { key, brand: s.brand || "Ohne Hersteller", material: s.material, subtype: s.subtype || "", color_name: s.color_name || "", rgba: s.rgba, template: s, spools: [], remaining: 0, capacity: 0 };
+      map.set(key, g);
+    }
+    g.spools.push(s);
+    g.remaining += remaining(s);
+    g.capacity += s.label_weight || 0;
+    if ((s.id || 0) > (g.template.id || 0)) g.template = s;
+  }
+  for (const g of map.values()) {
+    // Farbe der Sorte: die zuletzt geänderte Rolle mit gültiger Farbe, nicht einfach die erste.
+    const colored = g.spools.filter((s) => /^[0-9a-f]{6}/i.test(s.rgba || ""))
+      .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || "") || b.id - a.id);
+    g.rgba = colored[0]?.rgba || null;
+    g.mixedColors = new Set(colored.map((s) => s.rgba.slice(0, 6).toUpperCase())).size > 1;
+    // Neue Rollen (+1, Eingetroffen) übernehmen die Farbe der Sorte, auch wenn die Vorlage keine hat.
+    if (g.rgba && g.template.rgba !== g.rgba) g.template = { ...g.template, rgba: g.rgba };
+    // Im Drucker = einem AMS-Platz zugeordnet, im Regal = alle übrigen Rollen.
+    g.printer = g.spools.filter((s) => state.inPrinter?.has(s.id)).length;
+    g.shelf = g.spools.length - g.printer;
+    g.full = g.spools.filter((s) => (s.weight_used || 0) < 1).length;
+    g.opened = g.spools.filter((s) => (s.weight_used || 0) >= 1 && remaining(s) > 0).length;
+    g.places = [...new Set(g.spools.map(spoolPlace).filter(Boolean))];
+    g.lastUsed = g.spools.map((s) => s.last_used || state.lastUse?.get(s.id) || "").sort().pop() || "";
+    const threshold = g.template.low_stock_threshold_pct;
+    g.empty = g.remaining <= 0;
+    g.low = !g.empty && (threshold ? g.remaining < (g.template.label_weight || 1000) * threshold / 100 : g.remaining < LOW_GRAMS);
+  }
+  state.groups = [...map.values()];
+}
+
+function stockFor(item) {
+  // Lagerbestand passend zu einem Einkaufslisten-Eintrag (Hersteller, Material, Typ, Farbe).
+  let rolls = 0, grams = 0, printer = 0, match = null;
+  for (const g of state.groups) {
+    if (norm(g.material) !== norm(item.material)) continue;
+    if (item.brand && norm(g.brand) !== norm(item.brand)) continue;
+    if (item.subtype && norm(g.subtype) !== norm(item.subtype)) continue;
+    if (item.color_name && norm(g.color_name) !== norm(item.color_name)) continue;
+    rolls += g.shelf;
+    printer += g.printer;
+    grams += g.remaining;
+    match = match || g;
+  }
+  return { rolls, grams, printer, match };
+}
+
+function cartFor(g) {
+  return state.shop.find((i) => i.status === "pending" && norm(i.material) === norm(g.material) && norm(i.brand) === norm(g.brand)
+    && norm(i.subtype) === norm(g.subtype) && norm(i.color_name) === norm(g.color_name));
+}
+
+async function load(quiet) {
+  // Rechte bei jedem Abruf auffrischen, damit Änderungen durch den Admin ohne Neuladen greifen.
+  const me = await api("api/me").catch(() => state.me);
+  if (me && me.level !== state.me?.level) {
+    state.me = me;
+    applyRights();
+  }
+  if (!can(VIEW)) return;
+  try {
+    const [spools, shop, rec, slots, brands, locations, usage] = await Promise.all([api("api/inventory/spools"),
+      api("api/inventory/shopping-list"), api("reconcile").catch(() => null), api("api/inventory/assignments").catch(() => []),
+      api("brands").catch(() => ({})), api("api/inventory/locations").catch(() => []),
+      api("api/inventory/usage?limit=500").catch(() => [])]);
+    state.brands = brands;
+    state.locations = new Map((Array.isArray(locations) ? locations : []).map((l) => [l.id, l.name]));
+    state.locationList = Array.isArray(locations) ? locations : [];
+    // Letzte Nutzung je Rolle aus dem Verbrauchsverlauf, falls Bambuddy last_used nicht setzt.
+    state.lastUse = new Map();
+    for (const u of Array.isArray(usage) ? usage : []) {
+      if (!state.lastUse.has(u.spool_id) || state.lastUse.get(u.spool_id) < u.created_at) state.lastUse.set(u.spool_id, u.created_at);
+    }
+    state.inPrinter = new Set((Array.isArray(slots) ? slots : []).map((a) => a.spool_id));
+    state.spools = (Array.isArray(spools) ? spools : []).filter((s) => !s.archived_at);
+    state.shop = Array.isArray(shop) ? shop : [];
+    state.reconcile = rec || { merged: [], unclear: [] };
+    state.loaded = true;
+    buildGroups();
+    banner(null);
+    render();
+    $("#updated").textContent = "Stand " + new Date().toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  } catch (e) {
+    if (!quiet || !state.loaded) await explainError();
+  }
+}
+
+async function explainError() {
+  try {
+    const s = await api("api/status");
+    if (s.reason === "no_key") return banner("<b>Noch kein API-Schlüssel eingetragen.</b> Lege in Bambuddy unter Einstellungen → API-Schlüssel einen Schlüssel an und trage ihn in Home Assistant bei dieser App unter <i>Konfiguration</i> ein.");
+    if (s.reason === "bad_key") return banner("<b>Bambuddy lehnt den API-Schlüssel ab.</b> Prüfe den Schlüssel und ob er das Recht <i>Inventar verwalten</i> hat.");
+    if (s.reason === "unreachable") return banner("<b>Bambuddy ist gerade nicht erreichbar.</b> Läuft die Bambuddy-App?");
+  } catch { /* fällt auf die allgemeine Meldung zurück */ }
+  banner("<b>Daten konnten nicht geladen werden.</b> Ich versuche es gleich wieder.");
+}
+
+// ---------- Darstellung ----------
+
+function logoHtml(brand, cls = "") {
+  const initials = esc((brand || "?").replace(/[^A-Za-z0-9 ]/g, "").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?");
+  return `<span class="logo ${cls}" data-initials="${initials}"><img src="logo/${encodeURIComponent(brand)}?v=${state.logoVersion}" alt="" onerror="this.parentNode.textContent=this.parentNode.dataset.initials"></span>`;
+}
+
+function color(g) {
+  const hex = (g.rgba || "").slice(0, 6);
+  return /^[0-9a-f]{6}$/i.test(hex) ? "#" + hex : "#999999";
+}
+
+// Farbfamilie aus dem Hex-Code, damit „Black“ und „Schwarz“ im selben Filter landen.
+function colorFamily(rgba) {
+  if (!/^[0-9a-f]{6}/i.test(rgba || "")) return "Ohne Farbe";
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(rgba.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  if (l < 0.15) return "Schwarz";
+  if (s < 0.15) return l > 0.85 ? "Weiß" : "Grau";
+  let h = d === 0 ? 0 : max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = (h * 60 + 360) % 360;
+  if (l > 0.85 && s < 0.5) return "Weiß";
+  if (h < 15 || h >= 345) return l < 0.35 ? "Braun" : "Rot";
+  if (h < 45) return l < 0.45 || s < 0.45 ? "Braun" : "Orange";
+  if (h < 70) return l < 0.35 ? "Braun" : "Gelb";
+  if (h < 165) return "Grün";
+  if (h < 255) return "Blau";
+  if (h < 290) return "Lila";
+  return "Pink";
+}
+
+const PLACE_PRINTER = "__printer", PLACE_NONE = "__none";
+
+const FILTER_KEYS = ["brand", "material", "color", "place"];
+
+function placeMatches(g, p) {
+  if (p === PLACE_PRINTER) return g.printer > 0;
+  if (p === PLACE_NONE) return g.shelf > 0 && !g.places.length;
+  return g.places.includes(p);
+}
+
+function matchesFilter(g) {
+  // Innerhalb eines Filters reicht ein Treffer (oder), zwischen den Filtern muss alles passen (und).
+  const f = state.filter;
+  if (f.brand.length && !f.brand.some((v) => norm(v) === norm(g.brand))) return false;
+  if (f.material.length && !f.material.some((v) => norm(v) === norm(g.material))) return false;
+  if (f.color.length && !f.color.includes(colorFamily(g.rgba))) return false;
+  if (f.place.length && !f.place.some((p) => placeMatches(g, p))) return false;
+  if (!f.text) return true;
+  const hay = norm([g.brand, g.material, g.subtype, g.color_name].join(" "));
+  return norm(f.text).split(/\s+/).every((w) => hay.includes(w));
+}
+
+function renderChipBox() {
+  // Chip-Rollen vom Drucker: automatisch zusammengeführte (letzte 24 h) und unklare zum Zuordnen.
+  const rec = state.reconcile || {};
+  const dot = (rgba) => `<span class="swatch" style="background:${/^[0-9a-f]{6}/i.test(rgba || "") ? "#" + rgba.slice(0, 6) : "#999"}"></span>`;
+  const recent = (rec.merged || []).filter((m) => Date.now() / 1000 - m.time < 86400).reverse();
+  const unclear = rec.unclear || [];
+  if (!recent.length && !unclear.length) return $("#chipBox").classList.add("hidden");
+  $("#chipBox").innerHTML = `<h3>Vom Drucker erkannt</h3>` +
+    unclear.map((u) => `<div class="chipRow unclear">${dot(u.rgba)}<span>Chip-Rolle <b>${esc(u.chip)}</b> passt zu mehreren Sorten:</span>
+      <select data-chip="${u.chip_id}">${u.options.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>
+      <button class="primary need-edit" data-act="resolve" data-chip="${u.chip_id}">Zuordnen</button>
+      <button class="need-edit" data-act="keep" data-chip="${u.chip_id}">Ist eine neue Rolle</button></div>`).join("") +
+    recent.map((m) => `<div class="chipRow">${dot(m.rgba)}<span>Chip erkannt und deiner Lager-Rolle <b>${esc(m.name)}</b> zugeordnet, nichts doppelt.</span></div>`).join("");
+  $("#chipBox").classList.remove("hidden");
+}
+
+function render() {
+  renderChipBox();
+  renderChips();
+  renderStock();
+  renderShop();
+  renderBrands();
+  renderLists();
+}
+
+// Gleicher Schlüssel wie im Server (brand_key), damit Webseite und Logo zusammenpassen.
+const brandKey = (s) => (s || "").toLowerCase().replace(/[^a-z0-9:]/g, "");
+
+function allBrands() {
+  // Hersteller aus den Rollen plus selbst angelegte (auch ohne Rollen).
+  const map = new Map();
+  for (const s of state.spools) if (s.brand) map.set(brandKey(s.brand), { name: s.brand, rolls: 0, website: "" });
+  for (const [key, b] of Object.entries(state.brands || {})) {
+    const entry = map.get(key) || { name: b.name || key, rolls: 0 };
+    entry.website = b.website || "";
+    map.set(key, entry);
+  }
+  for (const g of state.groups) {
+    const e = map.get(brandKey(g.brand));
+    if (e) e.rolls += g.spools.length;
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "de"));
+}
+
+function renderBrands() {
+  const list = allBrands();
+  $("#brandCount").textContent = list.length || "";
+  $("#brandGrid").innerHTML = list.length ? list.map((b) => `
+    <button class="brandCard" data-act="brand" data-brand="${esc(b.name)}">
+      ${logoHtml(b.name, "big")}
+      <span class="brandCardName">${esc(b.name)}</span>
+      <span class="muted">${b.rolls} ${b.rolls === 1 ? "Rolle" : "Rollen"}${b.website ? " · " + esc(b.website) : ""}</span>
+    </button>`).join("") : `<div class="emptyState">Noch keine Hersteller.</div>`;
+}
+
+const FILTER_UI = { brand: ["#fBrand", "Alle Hersteller"], material: ["#fMaterial", "Alle Materialien"], color: ["#fColor", "Alle Farben"], place: ["#fPlace", "Alle Lagerorte"] };
+let openMenu = null;
+
+function filterOptions(key) {
+  const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, "de")).map((v) => [v, v]);
+  if (key === "brand") return uniq(state.groups.map((g) => g.brand));
+  if (key === "material") return uniq(state.groups.map((g) => g.material));
+  if (key === "color") return uniq(state.groups.map((g) => colorFamily(g.rgba)));
+  return [...uniq(state.groups.flatMap((g) => g.places)), [PLACE_PRINTER, "Im Drucker"], [PLACE_NONE, "Ohne Lagerplatz"]];
+}
+
+function saveFilter() {
+  try { localStorage.setItem("filter", JSON.stringify(state.filter)); } catch { /* egal */ }
+}
+
+function renderChips() {
+  // Mehrfachauswahl je Filter; gewählte Werte, die es nicht mehr gibt, fallen weg.
+  for (const key of FILTER_KEYS) {
+    const [id, all] = FILTER_UI[key];
+    const box = $(id);
+    const options = filterOptions(key);
+    state.filter[key] = state.filter[key].filter((v) => options.some(([o]) => o === v));
+    const chosen = state.filter[key];
+    const labelOf = (v) => options.find(([o]) => o === v)?.[1] || v;
+    const text = !chosen.length ? all : chosen.length === 1 ? labelOf(chosen[0]) : `${chosen.length} ausgewählt`;
+    box.classList.toggle("active", chosen.length > 0);
+    box.innerHTML = `<button type="button" class="msBtn" data-ms="${key}">${esc(text)}</button>
+      <div class="msMenu${openMenu === key ? "" : " hidden"}">
+        ${options.map(([v, label]) => `<label><input type="checkbox" data-msval="${key}" value="${esc(v)}"${chosen.includes(v) ? " checked" : ""}>${esc(label)}</label>`).join("")}
+        ${chosen.length ? `<button type="button" class="msClear" data-msclear="${key}">Auswahl löschen</button>` : ""}
+      </div>`;
+  }
+  $("#fReset").classList.toggle("hidden", !FILTER_KEYS.some((k) => state.filter[k].length));
+}
+
+$(".filters").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("[data-ms]");
+  if (btn) {
+    openMenu = openMenu === btn.dataset.ms ? null : btn.dataset.ms;
+    return renderChips();
+  }
+  const clear = ev.target.closest("[data-msclear]");
+  if (clear) {
+    state.filter[clear.dataset.msclear] = [];
+    saveFilter();
+    renderChips();
+    renderStock();
+  }
+});
+
+$(".filters").addEventListener("change", (ev) => {
+  const cb = ev.target.closest("input[data-msval]");
+  if (!cb) return;
+  const key = cb.dataset.msval;
+  const set = new Set(state.filter[key]);
+  cb.checked ? set.add(cb.value) : set.delete(cb.value);
+  state.filter[key] = [...set];
+  saveFilter();
+  renderChips();
+  renderStock();
+});
+
+// Klick außerhalb schließt das offene Auswahlmenü.
+document.addEventListener("click", (ev) => {
+  // Nach dem Neuzeichnen hängt das angeklickte Element nicht mehr im Dokument, dann nichts schließen.
+  if (openMenu && ev.target.isConnected && !ev.target.closest(".ms")) {
+    openMenu = null;
+    renderChips();
+  }
+});
+
+$("#fReset").addEventListener("click", () => {
+  for (const k of FILTER_KEYS) state.filter[k] = [];
+  openMenu = null;
+  saveFilter();
+  renderChips();
+  renderStock();
+});
+
+function renderStock() {
+  const groups = state.groups.filter(matchesFilter);
+  const rolls = state.groups.reduce((n, g) => n + g.shelf, 0);
+  const printer = state.groups.reduce((n, g) => n + g.printer, 0);
+  const grams = state.groups.reduce((n, g) => n + g.remaining, 0);
+  const low = state.groups.filter((g) => g.low || g.empty).length;
+  $("#stockCount").textContent = rolls;
+  $("#summary").innerHTML = `
+    <div class="stat"><b>${rolls}</b><span class="muted">Rollen im Lager</span></div>
+    <div class="stat"><b>${printer}</b><span class="muted">im Drucker</span></div>
+    <div class="stat"><b>${state.groups.reduce((n, g) => n + g.opened, 0)}</b><span class="muted">angebrochen</span></div>
+    <div class="stat"><b>${kg(grams)}</b><span class="muted">Filament übrig</span></div>
+    <div class="stat"><b>${state.groups.length}</b><span class="muted">Sorten</span></div>
+    <div class="stat ${low ? "low" : ""}"><b>${low}</b><span class="muted">knapp</span></div>`;
+
+  if (!groups.length) {
+    $("#brands").innerHTML = `<div class="emptyState">${state.loaded ? (state.groups.length ? "Nichts gefunden." : "Noch kein Material im Lager. Leg mit „+ Neues Material“ los.") : "Lade …"}</div>`;
+    return;
+  }
+  const byBrand = new Map();
+  for (const g of groups) {
+    if (!byBrand.has(g.brand)) byBrand.set(g.brand, []);
+    byBrand.get(g.brand).push(g);
+  }
+  const brands = [...byBrand.keys()].sort((a, b) => a.localeCompare(b, "de"));
+  $("#brands").innerHTML = brands.map((brand) => {
+    const list = byBrand.get(brand).sort((a, b) => (a.material + a.subtype + a.color_name).localeCompare(b.material + b.subtype + b.color_name, "de"));
+    const count = list.reduce((n, g) => n + g.spools.length, 0);
+    return `<div class="brand">
+      <div class="brandHead">${logoHtml(brand)}<h2>${esc(brand)}</h2><span class="muted">${count} ${count === 1 ? "Rolle" : "Rollen"}</span>
+        <button class="icon need-edit" data-act="brand" data-brand="${esc(brand)}" title="Logo ändern">✎</button></div>
+      <div class="grid">${list.map(tileHtml).join("")}</div></div>`;
+  }).join("");
+}
+
+function tileHtml(g) {
+  const pct = g.capacity ? Math.round((g.remaining / g.capacity) * 100) : 0;
+  const cls = g.empty ? "empty" : g.low ? "low" : "";
+  const badge = g.empty ? `<span class="badge empty">leer</span>` : g.low ? `<span class="badge low">knapp</span>` : "";
+  const cart = cartFor(g);
+  return `<div class="tile ${cls}">
+    <div class="tileTop" data-edit="${esc(g.key)}" title="Antippen zum Bearbeiten"><span class="swatch" style="background:${color(g)}"></span>
+      <div class="grow"><div class="tileName">${esc(g.color_name || "Ohne Farbname")} <span class="editHint need-edit">✎</span></div>
+      <div class="tileSub">${esc([g.material, g.subtype].filter(Boolean).join(" "))}${missingFields(g).length ? ` <span class="missing">· fehlt: ${missingFields(g).join(", ")}</span>` : ""}</div></div></div>
+    <div class="bar"><span style="width:${pct}%"></span></div>
+    <div class="tileInfo"><span><b>${g.shelf}</b> im Lager${g.printer ? ` · <b>${g.printer}</b> im Drucker` : ""} ${badge}</span><span>${kg(g.remaining)}</span></div>
+    <div class="tileMeta">
+      ${g.opened ? `<span>◔ ${g.opened} angebrochen</span>` : ""}
+      ${g.places.length ? `<span>📍 ${esc(g.places.join(", "))}</span>` : `<span class="muted">📍 ${g.shelf ? "kein Lagerplatz" : "alle im Drucker"}</span>`}
+      <span>🕓 ${g.lastUsed ? "zuletzt " + fmtDate(g.lastUsed) : "noch nie verwendet"}</span>
+    </div>
+    <div class="tileActions">
+      <button class="minus need-edit" data-act="minus" data-key="${esc(g.key)}" title="Eine Rolle ausbuchen"${g.shelf ? "" : " disabled"}>−</button>
+      <button class="need-add" data-act="plus" data-key="${esc(g.key)}" title="Eine volle Rolle dazubuchen">+1 Rolle</button>
+      <button class="need-add" data-act="cart" data-key="${esc(g.key)}" title="Auf die Einkaufsliste">${cart ? `🛒 <span class="badge cart">${cart.quantity_spools}</span>` : "🛒"}</button>
+    </div></div>`;
+}
+
+function missingFields(g) {
+  const t = g.template;
+  return [!t.brand && "Hersteller", !t.subtype && "Typ", !t.color_name && "Farbname", !g.rgba && "Farbe"].filter(Boolean);
+}
+
+function renderShop() {
+  const items = [...state.shop].sort((a, b) => statusOrder(a.status) - statusOrder(b.status) || (a.added_at || "").localeCompare(b.added_at || ""));
+  const open = items.filter((i) => i.status !== "received");
+  $("#shopCount").textContent = open.length || "";
+  if (!items.length) {
+    $("#shopList").innerHTML = `<div class="emptyState">Die Einkaufsliste ist leer. Tippe im Lager bei einer Sorte auf 🛒.</div>`;
+    return;
+  }
+  $("#shopList").innerHTML = items.map((i) => {
+    const st = stockFor(i);
+    const sw = st.match ? `<span class="swatch" style="width:32px;height:32px;background:${color(st.match)}"></span>` : "";
+    const statusLabel = { pending: "zu kaufen", purchased: "bestellt", received: "eingetroffen" }[i.status] || i.status;
+    const done = i.status === "received";
+    let actions = "";
+    if (i.status === "pending") actions = `<button class="need-add" data-act="ordered" data-id="${i.id}">Bestellt</button><button class="primary need-add" data-act="receive" data-id="${i.id}">Eingetroffen</button>`;
+    else if (i.status === "purchased") actions = `<button class="primary need-add" data-act="receive" data-id="${i.id}">Eingetroffen → ins Lager</button>`;
+    return `<div class="shopItem ${done ? "done" : ""}">
+      ${sw}${i.brand ? logoHtml(i.brand, "small") : ""}
+      <div class="shopMain"><b>${esc(i.color_name || "")}</b> ${esc([i.material, i.subtype].filter(Boolean).join(" "))}
+        <div class="muted">${esc(i.brand || "")}${i.note ? " · " + esc(i.note) : ""}</div></div>
+      <div class="shopStock">Im Lager: <b>${st.rolls}</b> ${st.rolls === 1 ? "Rolle" : "Rollen"}<div class="muted">${st.printer ? st.printer + " im Drucker · " : ""}${kg(st.grams)} übrig</div></div>
+      <div class="qty">${done ? "" : `<button class="icon need-add" data-act="qty-" data-id="${i.id}">−</button>`}<span>${i.quantity_spools}×</span>${done ? "" : `<button class="icon need-add" data-act="qty+" data-id="${i.id}">+</button>`}</div>
+      <span class="status ${esc(i.status)}">${esc(statusLabel)}</span>
+      ${actions}
+      <button class="icon need-add" data-act="remove" data-id="${i.id}" title="Entfernen">✕</button>
+    </div>`;
+  }).join("");
+}
+
+function statusOrder(s) {
+  return { pending: 0, purchased: 1, received: 2 }[s] ?? 3;
+}
+
+function renderLists() {
+  const fill = (id, values) => {
+    $(id).innerHTML = [...new Set(values.filter(Boolean))].sort().map((v) => `<option value="${esc(v)}">`).join("");
+  };
+  fill("#brandList", allBrands().map((b) => b.name));
+  fill("#materialList", ["PLA", "PETG", "ABS", "ASA", "TPU", "PA", "PC", ...state.spools.map((s) => s.material)]);
+  fill("#subtypeList", ["Basic", "Matte", "Silk", "Glow", "CF", "HF", "Translucent", ...state.spools.map((s) => s.subtype)]);
+}
+
+// ---------- Aktionen ----------
+
+const COPY_FIELDS = ["material", "subtype", "color_name", "rgba", "extra_colors", "effect_type", "brand", "label_weight", "core_weight",
+  "core_weight_catalog_id", "slicer_filament", "slicer_filament_name", "nozzle_temp_min", "nozzle_temp_max", "cost_per_kg",
+  "category", "low_stock_threshold_pct", "material_number", "storage_location", "location_id"];
+
+function spoolFrom(template) {
+  const spool = {};
+  for (const f of COPY_FIELDS) if (template[f] !== undefined && template[f] !== null) spool[f] = template[f];
+  spool.weight_used = 0;
+  return spool;
+}
+
+async function addSpools(spool, quantity) {
+  if (quantity > 1) await api("api/inventory/spools/bulk", { method: "POST", body: JSON.stringify({ spool, quantity }) });
+  else await api("api/inventory/spools", { method: "POST", body: JSON.stringify(spool) });
+}
+
+function askConfirm(title, html, yesLabel = "Bestätigen", danger = false) {
+  // Eigenes Bestätigungsfenster; liefert true bei „Bestätigen“.
+  const dlg = $("#confirmDialog");
+  $("#confirmTitle").textContent = title;
+  $("#confirmBody").innerHTML = html;
+  const yes = $("#confirmYes");
+  yes.textContent = yesLabel;
+  yes.className = danger ? "danger" : "primary";
+  return new Promise((resolve) => {
+    // Direkt auf die Knöpfe reagieren statt auf „close“, das kommt in manchen Browsern verzögert.
+    const done = (answer) => {
+      dlg.removeEventListener("click", onClick);
+      dlg.removeEventListener("cancel", onCancel);
+      resolve(answer);
+    };
+    const onClick = (ev) => {
+      const b = ev.target.closest("button");
+      if (b) done(b.value === "yes");
+    };
+    const onCancel = () => done(false);
+    dlg.addEventListener("click", onClick);
+    dlg.addEventListener("cancel", onCancel);
+    dlg.showModal();
+  });
+}
+
+function sortLine(f, qty) {
+  const sw = /^[0-9a-f]{6}/i.test(f.rgba || "") ? `<span class="swatch" style="background:#${f.rgba.slice(0, 6)}"></span>` : "";
+  return `<div class="confirmLine">${sw}<span><b>${qty}×</b> ${esc(f.brand || "")} ${esc([f.material, f.subtype].filter(Boolean).join(" "))} <b>${esc(f.color_name || "")}</b></span></div>`;
+}
+
+async function confirmBooking(f, qty, extra = "") {
+  return askConfirm("Einbuchen bestätigen", sortLine(f, qty) + `<p class="confirmNote">${qty === 1 ? "Eine volle Rolle wird" : qty + " volle Rollen werden"} ins Lager gebucht.${extra}</p>`, "Einbuchen");
+}
+
+async function plusOne(g) {
+  if (!(await confirmBooking(g.template, 1))) return;
+  await addSpools(spoolFrom(g.template), 1);
+  toast(`+1 Rolle ${g.color_name} ${g.material}`);
+}
+
+function removableSpool(g) {
+  // Nur Rollen im Regal: zuerst unbenutzte ohne Chip, dann angebrochene ohne Chip, dann mit Chip.
+  const shelf = g.spools.filter((s) => !state.inPrinter?.has(s.id));
+  const score = (s) => (s.tag_uid || s.tray_uuid ? 2 : 0) + ((s.weight_used || 0) >= 1 ? 1 : 0);
+  return shelf.sort((a, b) => score(a) - score(b) || b.id - a.id)[0];
+}
+
+async function minusOne(g) {
+  const spool = removableSpool(g);
+  if (!spool) return toast("Keine Rolle im Lager zum Ausbuchen, alle stecken im Drucker");
+  const used = (spool.weight_used || 0) >= 1 ? ` Die Rolle ist angebrochen (${kg(remaining(spool))} übrig).` : "";
+  const chip = spool.tag_uid || spool.tray_uuid ? " Die Rolle hat einen Chip." : "";
+  const ok = await askConfirm("Ausbuchen bestätigen", sortLine(g.template, 1) +
+    `<p class="confirmNote">Eine Rolle wird aus dem Lager genommen.${used}${chip} Sie wird in Bambuddy archiviert und lässt sich dort wiederherstellen.</p>`, "Ausbuchen", true);
+  if (!ok) return;
+  await api(`api/inventory/spools/${spool.id}/archive`, { method: "POST" });
+  toast(`−1 Rolle ${g.color_name} ${g.material}`);
+}
+
+async function setCartQty(fields, qty, existing) {
+  // Bambuddy kann die Menge eines Eintrags nicht ändern, deshalb wird er neu angelegt.
+  if (existing) await api(`api/inventory/shopping-list/${existing.id}`, { method: "DELETE" });
+  if (qty > 0) {
+    await api("api/inventory/shopping-list", {
+      method: "POST",
+      body: JSON.stringify({ material: fields.material, subtype: fields.subtype || null, brand: fields.brand || null, color_name: fields.color_name || null, quantity_spools: qty, note: existing?.note || null }),
+    });
+    if (existing && existing.status !== "pending") {
+      const fresh = await api("api/inventory/shopping-list");
+      const item = fresh.filter((i) => i.status === "pending").pop();
+      if (item) await api(`api/inventory/shopping-list/${item.id}/status`, { method: "PATCH", body: JSON.stringify({ status: existing.status }) });
+    }
+  }
+}
+
+async function addToCart(g) {
+  const existing = cartFor(g);
+  const brand = g.brand === "Ohne Hersteller" ? "" : g.brand;
+  await setCartQty({ ...g, brand }, (existing?.quantity_spools || 0) + 1, existing);
+  toast(`${g.color_name} ${g.material} auf der Einkaufsliste`);
+}
+
+async function receive(item) {
+  const st = stockFor(item);
+  const spool = st.match ? spoolFrom(st.match.template) : { material: item.material, subtype: item.subtype, brand: item.brand, color_name: item.color_name, label_weight: 1000, weight_used: 0 };
+  if (!(await confirmBooking(spool, item.quantity_spools || 1, " Der Eintrag auf der Einkaufsliste wird als eingetroffen markiert."))) return;
+  await addSpools(spool, item.quantity_spools || 1);
+  await api(`api/inventory/shopping-list/${item.id}/status`, { method: "PATCH", body: JSON.stringify({ status: "received" }) });
+  toast(`${item.quantity_spools}× ${item.color_name || item.material} ins Lager gebucht`);
+}
+
+async function run(fn) {
+  try {
+    await fn();
+  } catch (e) {
+    toast("Fehler: " + e.message);
+  }
+  await load(true);
+}
+
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button");
+  if (!btn) return;
+  if (btn.classList.contains("tab")) {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
+    for (const name of ["stock", "shop", "brands", "users"]) $("#tab-" + name).classList.toggle("hidden", btn.dataset.tab !== name);
+    if (btn.dataset.tab === "users") loadUsers();
+    try { localStorage.setItem("tab", btn.dataset.tab); } catch { /* egal */ }
+    return;
+  }
+  const act = btn.dataset.act;
+  if (!act) return;
+  const g = btn.dataset.key ? state.groups.find((x) => x.key === btn.dataset.key) : null;
+  const item = btn.dataset.id ? state.shop.find((x) => String(x.id) === btn.dataset.id) : null;
+  btn.disabled = true;
+  if (act === "plus" && g) run(() => plusOne(g));
+  else if (act === "minus" && g) run(() => minusOne(g));
+  else if (act === "cart" && g) run(() => addToCart(g));
+  else if (act === "brand") { btn.disabled = false; if (can(EDIT)) openBrand(btn.dataset.brand); }
+  else if (act === "level") btn.disabled = false;
+  else if (act === "resolve") {
+    const stockId = parseInt(document.querySelector(`select[data-chip="${btn.dataset.chip}"]`).value, 10);
+    run(() => api("reconcile", { method: "POST", body: JSON.stringify({ chip_id: parseInt(btn.dataset.chip, 10), stock_id: stockId }) }));
+  }
+  else if (act === "keep") run(() => api("reconcile", { method: "POST", body: JSON.stringify({ chip_id: parseInt(btn.dataset.chip, 10), keep: true }) }));
+  else if (item && act === "ordered") run(() => api(`api/inventory/shopping-list/${item.id}/status`, { method: "PATCH", body: JSON.stringify({ status: "purchased" }) }));
+  else if (item && act === "receive") run(() => receive(item));
+  else if (item && act === "qty+") run(() => setCartQty(item, item.quantity_spools + 1, item));
+  else if (item && act === "qty-") run(() => setCartQty(item, item.quantity_spools - 1, item));
+  else if (item && act === "remove") run(() => api(`api/inventory/shopping-list/${item.id}`, { method: "DELETE" }));
+  else btn.disabled = false;
+});
+
+$("#search").addEventListener("input", (e) => {
+  state.filter.text = e.target.value;
+  renderStock();
+});
+
+$("#clearDone").addEventListener("click", () => run(async () => {
+  for (const i of state.shop.filter((x) => x.status === "received")) {
+    await api(`api/inventory/shopping-list/${i.id}`, { method: "DELETE" });
+  }
+}));
+
+// Neues Material
+$("#addNew").addEventListener("click", () => {
+  $("#newForm").reset();
+  fillLocations($("#newForm").location, `<option value="">— kein Lagerplatz —</option>`);
+  $("#newForm").color.dataset.touched = "";
+  $("#dupHint").classList.add("hidden");
+  $("#newError").textContent = "";
+  $("#newDialog").showModal();
+});
+
+// Schreibweisen vereinheitlichen: "bambu lab " wird zu dem schon vorhandenen "Bambu Lab".
+const squash = (s) => norm(s).replace(/[^a-z0-9äöüß]/g, "");
+
+function canonical(value, field) {
+  const v = (value || "").trim().replace(/\s+/g, " ");
+  if (!v) return v;
+  const hit = state.spools.find((s) => squash(s[field]) === squash(v));
+  return hit ? hit[field] : v;
+}
+
+function hexDistance(a, b) {
+  const p = (h) => [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  if (!/^[0-9a-f]{6}/i.test(a || "") || !/^[0-9a-f]{6}/i.test(b || "")) return 999;
+  const [x, y] = [p(a), p(b)];
+  return Math.sqrt(x.reduce((n, v, i) => n + (v - y[i]) ** 2, 0));
+}
+
+function readNewForm() {
+  const f = new FormData($("#newForm"));
+  return {
+    brand: canonical(f.get("brand"), "brand"),
+    material: canonical(f.get("material"), "material"),
+    subtype: canonical(f.get("subtype"), "subtype") || null,
+    color_name: canonical(f.get("color_name"), "color_name"),
+    // Ohne gewählte Farbe kein Grau speichern, sonst sieht die Rolle fälschlich grau aus.
+    rgba: $("#newForm").color.dataset.touched === "1" ? f.get("color").slice(1).toUpperCase() + "FF" : null,
+    label_weight: parseInt(f.get("label_weight"), 10) || 1000,
+    weight_used: 0,
+    ...chosenLocation(),
+  };
+}
+
+function chosenLocation() {
+  const id = parseInt($("#newForm").location.value, 10);
+  return id ? { location_id: id, storage_location: state.locations?.get(id) || null } : {};
+}
+
+function sameSort(g, s) {
+  return squash(g.brand) === squash(s.brand) && squash(g.material) === squash(s.material)
+    && squash(g.subtype) === squash(s.subtype) && squash(g.color_name) === squash(s.color_name);
+}
+
+function similarSorts(s) {
+  // Gleiche Sorte oder sehr ähnliche: gleicher Hersteller und Material, dazu gleicher Farbname oder fast gleiche Farbe.
+  if (!s.brand || !s.material) return [];
+  return state.groups.filter((g) => {
+    const brandMatch = squash(g.brand).startsWith(squash(s.brand)) || squash(s.brand).startsWith(squash(g.brand));
+    if (!brandMatch || squash(g.material) !== squash(s.material)) return false;
+    if (sameSort(g, s)) return true;
+    const nameMatch = s.color_name && (squash(g.color_name) === squash(s.color_name));
+    const colorMatch = s.color_touched && hexDistance(g.rgba, s.rgba) < 40;
+    return nameMatch || colorMatch;
+  }).slice(0, 4);
+}
+
+function updateDupHint() {
+  const s = readNewForm();
+  s.color_touched = $("#newForm").color.dataset.touched === "1";
+  const hits = similarSorts(s);
+  const box = $("#dupHint");
+  if (!hits.length) return box.classList.add("hidden");
+  const exact = hits.find((g) => sameSort(g, s));
+  box.innerHTML = `<b>${exact ? "Diese Sorte gibt es schon:" : "Ähnliche Sorte im Lager, meinst du die?"}</b>` + hits.map((g) =>
+    `<div class="dupRow"><span class="swatch" style="background:${color(g)}"></span>
+      <span class="grow">${esc(g.brand)} ${esc([g.material, g.subtype].filter(Boolean).join(" "))} <b style="color:inherit">${esc(g.color_name)}</b> · ${g.spools.length} ${g.spools.length === 1 ? "Rolle" : "Rollen"}</span>
+      <button type="button" class="primary" data-dup="${esc(g.key)}">Hierzu buchen</button></div>`).join("");
+  box.classList.remove("hidden");
+}
+
+async function bookToGroup(g) {
+  const qty = Math.min(100, Math.max(1, parseInt($("#newForm").quantity.value, 10) || 1));
+  if (!(await confirmBooking(g.template, qty, " Die Sorte gibt es schon, die Rollen kommen dazu."))) return;
+  await addSpools({ ...spoolFrom(g.template), ...chosenLocation() }, qty);
+  $("#newDialog").close();
+  toast(`${qty}× zu ${g.color_name} ${g.material} gebucht`);
+  await load(true);
+}
+
+$("#newForm").addEventListener("input", (ev) => {
+  if (ev.target.name === "color") ev.target.dataset.touched = "1";
+  updateDupHint();
+});
+
+$("#dupHint").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button[data-dup]");
+  const g = btn && state.groups.find((x) => x.key === btn.dataset.dup);
+  if (g) bookToGroup(g).catch((e) => { $("#newError").textContent = "Konnte nicht speichern: " + e.message; });
+});
+
+$("#newForm").addEventListener("submit", async (ev) => {
+  if (ev.submitter?.value !== "ok") return;
+  ev.preventDefault();
+  const spool = readNewForm();
+  const qty = Math.min(100, Math.max(1, parseInt($("#newForm").quantity.value, 10) || 1));
+  try {
+    // Gibt es die Sorte schon (nur anders geschrieben), wird zur bestehenden gebucht statt doppelt angelegt.
+    const exact = state.groups.find((g) => sameSort(g, spool));
+    if (exact) return await bookToGroup(exact);
+    if (!(await confirmBooking(spool, qty, " Es wird eine neue Sorte angelegt."))) return;
+    await addSpools(spool, qty);
+    $("#newDialog").close();
+    toast(`${qty}× ${spool.color_name} ${spool.material} erfasst`);
+    await load(true);
+  } catch (e) {
+    $("#newError").textContent = "Konnte nicht speichern: " + e.message;
+  }
+});
+
+// Farbwähler und Hex-Feld gegenseitig abgleichen (in „Neues Material“ und „Sorte bearbeiten“).
+for (const form of [$("#newForm"), $("#editForm")]) {
+  const picker = form.color, hex = form.hex;
+  picker.addEventListener("input", () => { hex.value = picker.value.toUpperCase(); hex.setCustomValidity(""); });
+  hex.addEventListener("input", () => {
+    const v = hex.value.trim().replace(/^#?/, "#");
+    const ok = /^#[0-9a-f]{6}$/i.test(v);
+    hex.setCustomValidity(ok || !hex.value.trim() ? "" : "Bitte 6-stelligen Hex-Code eingeben, z. B. #FF9016");
+    if (!ok) return;
+    picker.value = v.toLowerCase();
+    picker.dataset.touched = "1";
+    form.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+// Sorte bearbeiten: Änderungen gelten für alle Rollen dieser Sorte.
+let editGroup = null;
+
+document.addEventListener("click", (ev) => {
+  const top = ev.target.closest("[data-edit]");
+  if (!top || !can(EDIT)) return;
+  const g = state.groups.find((x) => x.key === top.dataset.edit);
+  if (g) openEdit(g);
+});
+
+function fillLocations(select, first) {
+  select.innerHTML = first + (state.locationList || []).map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join("");
+}
+
+function openEdit(g) {
+  editGroup = g;
+  const f = $("#editForm");
+  const t = g.template;
+  f.reset();
+  fillLocations(f.location, `<option value="">— nicht ändern —</option><option value="none">— kein Lagerplatz —</option>`);
+  f.brand.value = t.brand || "";
+  f.material.value = t.material || "";
+  f.subtype.value = t.subtype || "";
+  f.color_name.value = t.color_name || "";
+  f.color.value = g.rgba ? "#" + g.rgba.slice(0, 6).toLowerCase() : "#808080";
+  // Haben die Rollen unterschiedliche Farben, wird beim Speichern die angezeigte für alle gesetzt.
+  f.color.dataset.touched = g.mixedColors ? "1" : "";
+  f.hex.value = g.rgba ? "#" + g.rgba.slice(0, 6).toUpperCase() : "";
+  f.label_weight.value = t.label_weight || 1000;
+  const missing = missingFields(g);
+  $("#editInfo").textContent = (g.spools.length === 1 ? "Gilt für die eine Rolle dieser Sorte." : `Gilt für alle ${g.spools.length} Rollen dieser Sorte.`) + (missing.length ? ` Es fehlt: ${missing.join(", ")}.` : "");
+  $("#editError").textContent = "";
+  $("#editDialog").showModal();
+}
+
+$("#editForm").color.addEventListener("input", (ev) => { ev.target.dataset.touched = "1"; });
+
+$("#editForm").addEventListener("submit", async (ev) => {
+  if (ev.submitter?.value !== "ok") return;
+  ev.preventDefault();
+  const f = ev.target;
+  const t = editGroup.template;
+  const next = {
+    brand: canonical(f.brand.value, "brand"),
+    material: canonical(f.material.value, "material"),
+    subtype: canonical(f.subtype.value, "subtype") || null,
+    color_name: canonical(f.color_name.value, "color_name") || null,
+    label_weight: parseInt(f.label_weight.value, 10) || t.label_weight || 1000,
+  };
+  if (f.color.dataset.touched === "1") next.rgba = f.color.value.slice(1).toUpperCase() + "FF";
+  const labels = { brand: "Hersteller", material: "Material", subtype: "Typ", color_name: "Farbname", label_weight: "Gewicht", rgba: "Farbe" };
+  const changes = Object.keys(next).filter((k) => k === "rgba"
+    ? editGroup.mixedColors || (editGroup.rgba || "").slice(0, 6).toUpperCase() !== next.rgba.slice(0, 6)
+    : (next[k] ?? "") !== (t[k] ?? ""));
+  const loc = f.location.value;
+  const shelfIds = editGroup.spools.filter((s) => !state.inPrinter?.has(s.id)).map((s) => s.id);
+  if (!changes.length && (!loc || !shelfIds.length)) return $("#editDialog").close();
+  const update = Object.fromEntries(changes.map((k) => [k, next[k]]));
+  const show = (k, v, old) => (k === "rgba" && v ? (old && editGroup.mixedColors ? "verschieden je Rolle" : "#" + v.slice(0, 6).toUpperCase()) : v);
+  let rows = changes.map((k) => `<div>${labels[k]}: <s class="muted">${esc(show(k, t[k], true) || "–")}</s> → <b>${esc(show(k, next[k]) || "–")}</b></div>`).join("");
+  const locName = loc === "none" ? "kein Lagerplatz" : state.locations?.get(parseInt(loc, 10));
+  if (loc && shelfIds.length) rows += `<div>Lagerplatz: → <b>${esc(locName)}</b> (${shelfIds.length} ${shelfIds.length === 1 ? "Rolle" : "Rollen"} im Lager)</div>`;
+  const ok = await askConfirm("Änderung bestätigen", sortLine(t, editGroup.spools.length) + `<div class="confirmNote">${rows}</div>`, "Speichern");
+  if (!ok) return;
+  try {
+    if (changes.length) await api("api/inventory/spools/bulk-update", { method: "POST", body: JSON.stringify({ ids: editGroup.spools.map((s) => s.id), update }) });
+    if (loc && shelfIds.length) {
+      const locUpdate = loc === "none" ? { location_id: null, storage_location: null } : { location_id: parseInt(loc, 10), storage_location: locName };
+      await api("api/inventory/spools/bulk-update", { method: "POST", body: JSON.stringify({ ids: shelfIds, update: locUpdate }) });
+    }
+    $("#editDialog").close();
+    toast("Sorte aktualisiert");
+    await load(true);
+  } catch (e) {
+    $("#editError").textContent = "Konnte nicht speichern: " + e.message;
+  }
+});
+
+// Hersteller-Logo
+let currentBrand = null;
+function openBrand(brand) {
+  // Ohne Namen: neuen Hersteller anlegen.
+  currentBrand = brand || null;
+  $("#brandForm").reset();
+  $("#brandTitle").classList.toggle("hidden", !brand);
+  $("#brandNameField").classList.toggle("hidden", !!brand);
+  $("#brandName").textContent = brand || "";
+  $("#brandLogoPreview").innerHTML = brand ? logoHtml(brand, "big") : "";
+  const entry = brand ? (state.brands || {})[brandKey(brand)] : null;
+  $("#brandForm").website.value = (entry && entry.website) || "";
+  $("#brandDialog").showModal();
+}
+
+$("#addBrand").addEventListener("click", () => openBrand(null));
+
+$("#brandForm").addEventListener("submit", async (ev) => {
+  if (ev.submitter?.value !== "ok") return;
+  ev.preventDefault();
+  const form = ev.target;
+  const file = form.file.files[0];
+  if (!currentBrand) {
+    const name = form.brandname.value.trim().replace(/\s+/g, " ");
+    if (!name) return toast("Bitte einen Namen eingeben");
+    const existing = allBrands().find((b) => brandKey(b.name) === brandKey(name));
+    currentBrand = existing ? existing.name : name;
+  }
+  try {
+    await api(`brands/${encodeURIComponent(currentBrand)}`, { method: "PUT", body: JSON.stringify({ website: form.website.value, name: currentBrand }) });
+    if (file) await api(`logo/${encodeURIComponent(currentBrand)}`, { method: "POST", body: file, headers: { "Content-Type": file.type || "image/png" } });
+    state.logoVersion = Date.now();
+    $("#brandDialog").close();
+    state.brands = await api("brands").catch(() => state.brands);
+    render();
+    toast("Hersteller gespeichert");
+  } catch (e) {
+    toast("Fehler: " + e.message);
+  }
+});
+
+// Benutzerverwaltung (nur Admin)
+async function loadUsers() {
+  if (!can(ADMIN)) return;
+  try {
+    const users = await api("users");
+    users.sort((a, b) => b.level - a.level || (a.name || "").localeCompare(b.name || "", "de"));
+    $("#userList").innerHTML = users.map((u) => `<div class="userRow">
+      <div class="grow"><b>${esc(u.name || u.login || "?")}</b>${u.login ? ` <span class="muted">Benutzername: ${esc(u.login)}</span>` : ""}
+        <div class="muted">${u.last_seen ? "zuletzt da: " + esc(u.last_seen.replace("T", " ")) : "hat die App noch nie geöffnet"}</div></div>
+      <span class="levelTag">${LEVELS[u.level]}${u.listed ? "" : " <span class='muted'>(Standard)</span>"}</span>
+    </div>`).join("") || `<div class="emptyState">Noch niemand.</div>`;
+  } catch (e) {
+    toast("Fehler: " + e.message);
+  }
+}
+
+// Start: erst die eigenen Rechte holen, dann die Daten.
+(async () => {
+  state.me = await api("api/me").catch(() => ({ level: 0 }));
+  applyRights();
+  try {
+    const saved = JSON.parse(localStorage.getItem("filter") || "{}");
+    // Früher war je Filter nur ein Wert gespeichert, jetzt eine Liste.
+    for (const k of FILTER_KEYS) state.filter[k] = Array.isArray(saved[k]) ? saved[k] : saved[k] ? [saved[k]] : [];
+    const tab = localStorage.getItem("tab");
+    const btn = tab && document.querySelector(`.tab[data-tab="${tab}"]`);
+    if (btn && (tab !== "users" || can(ADMIN))) btn.click();
+  } catch { /* egal */ }
+  load();
+})();
+setInterval(() => { if (!document.hidden) load(true); }, REFRESH_MS);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(true); });

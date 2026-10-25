@@ -1,0 +1,15 @@
+configuration:
+  bambuddy_url:
+    name: Bambuddy URL
+    description: Where Bambuddy can be reached.
+  api_key:
+    name: API key
+    description: Bambuddy API key with the "manage inventory" permission.
+  benutzer:
+    name: Users and permissions
+    description: >-
+      One entry per person with the Home Assistant username and a permission:
+      kein, ansehen, erfassen, bearbeiten or admin.
+  standard_recht:
+    name: Default permission
+    description: Permission for everyone not listed above.

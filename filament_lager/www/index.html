@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Filament-Lager</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="icon.png">
+</head>
+<body>
+<header class="top">
+  <div class="title">
+    <h1><img src="icon.png" alt="" class="appIcon">Filament-Lager</h1>
+    <span id="meInfo" class="muted"></span>
+    <span id="updated" class="muted"></span>
+  </div>
+  <nav class="tabs">
+    <button class="tab active" data-tab="stock">Lager <span id="stockCount" class="pill"></span></button>
+    <button class="tab" data-tab="shop">Einkaufsliste <span id="shopCount" class="pill"></span></button>
+    <button class="tab" data-tab="brands">Hersteller <span id="brandCount" class="pill"></span></button>
+    <button class="tab need-admin" data-tab="users">Benutzer</button>
+  </nav>
+</header>
+
+<div id="banner" class="banner hidden"></div>
+
+<main>
+  <section id="tab-stock">
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Suchen: Farbe, Material, Hersteller …">
+      <button id="addNew" class="primary need-add">+ Neues Material</button>
+    </div>
+    <div id="chipBox" class="chipBox hidden"></div>
+    <div class="filters">
+      <div class="msWrap"><span class="msLabel">Hersteller</span><div class="ms" id="fBrand"></div></div>
+      <div class="msWrap"><span class="msLabel">Material</span><div class="ms" id="fMaterial"></div></div>
+      <div class="msWrap"><span class="msLabel">Farbe</span><div class="ms" id="fColor"></div></div>
+      <div class="msWrap"><span class="msLabel">Lagerort</span><div class="ms" id="fPlace"></div></div>
+      <button id="fReset" class="hidden">Filter zurücksetzen</button>
+    </div>
+    <div id="summary" class="summary"></div>
+    <div id="brands"></div>
+  </section>
+
+  <section id="tab-shop" class="hidden">
+    <div class="toolbar">
+      <span class="muted">Der Lagerbestand neben jedem Eintrag ist immer aktuell.</span>
+      <span class="spacer"></span>
+      <button id="clearDone" class="need-add">Erledigte entfernen</button>
+    </div>
+    <div id="shopList"></div>
+  </section>
+
+  <section id="tab-brands" class="hidden">
+    <div class="toolbar">
+      <span class="muted">Tippe auf einen Hersteller, um Webseite oder Logo zu ändern.</span>
+      <span class="spacer"></span>
+      <button id="addBrand" class="primary need-edit">+ Neuer Hersteller</button>
+    </div>
+    <div id="brandGrid" class="brandGrid"></div>
+  </section>
+
+  <section id="tab-users" class="hidden">
+    <div class="toolbar"><span class="muted">Rechte stellst du in Home Assistant ein: <b>Einstellungen → Apps → Filament-Lager → Konfiguration</b>, Feld <b>benutzer</b>. Als Name den Benutzernamen von hier eintragen. Wer nicht eingetragen ist, bekommt das <b>standard_recht</b>.</span></div>
+    <div id="userList"></div>
+    <div class="muted" style="margin-top:12px">
+      <b>kein</b>: kein Zugriff · <b>ansehen</b>: nur schauen · <b>erfassen</b>: Rollen einbuchen, Einkaufsliste · <b>bearbeiten</b>: zusätzlich Sorten ändern, ausbuchen, Hersteller · <b>admin</b>: zusätzlich diese Übersicht
+    </div>
+  </section>
+
+  <div id="noAccess" class="noAccess hidden">
+    <h2>Kein Zugriff</h2>
+    <p class="muted">Du hast für das Filament-Lager noch keine Berechtigung. Ein Admin kann sie dir unter „Benutzer“ geben.</p>
+  </div>
+</main>
+
+<dialog id="newDialog">
+  <form id="newForm" method="dialog">
+    <h2>Neues Material erfassen</h2>
+    <label>Hersteller<input name="brand" list="brandList" required autocomplete="off"></label>
+    <div class="row">
+      <label>Material<input name="material" list="materialList" required autocomplete="off" placeholder="PLA"></label>
+      <label>Typ<input name="subtype" list="subtypeList" autocomplete="off" placeholder="Basic, Matte …"></label>
+    </div>
+    <div class="row">
+      <label>Farbname<input name="color_name" required autocomplete="off"></label>
+      <label class="narrow">Farbe<input name="color" type="color" value="#808080"></label>
+      <label class="narrow">Hex-Code<input name="hex" placeholder="#808080" maxlength="7" autocomplete="off" spellcheck="false"></label>
+    </div>
+    <div class="row">
+      <label>Gewicht pro Rolle (g)<input name="label_weight" type="number" min="100" step="50" value="1000"></label>
+      <label class="narrow">Anzahl Rollen<input name="quantity" type="number" min="1" max="100" value="1"></label>
+    </div>
+    <label>Lagerplatz<select name="location"></select></label>
+    <div id="dupHint" class="dupHint hidden"></div>
+    <p id="newError" class="error"></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Abbrechen</button>
+      <button value="ok" class="primary">Ins Lager</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="brandDialog">
+  <form id="brandForm" method="dialog">
+    <h2 id="brandTitle">Hersteller <span id="brandName"></span></h2>
+    <label id="brandNameField" class="hidden">Name des Herstellers<input name="brandname" autocomplete="off"></label>
+    <div class="brandPreview"><span id="brandLogoPreview"></span></div>
+    <label>Webseite des Herstellers (Logo wird von dort geholt)<input name="website" placeholder="z. B. polymaker.com"></label>
+    <label>Oder eigenes Logo hochladen<input name="file" type="file" accept="image/*"></label>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Abbrechen</button>
+      <button value="ok" class="primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="editDialog">
+  <form id="editForm" method="dialog">
+    <h2>Sorte bearbeiten</h2>
+    <p id="editInfo" class="muted"></p>
+    <label>Hersteller<input name="brand" list="brandList" required autocomplete="off"></label>
+    <div class="row">
+      <label>Material<input name="material" list="materialList" required autocomplete="off"></label>
+      <label>Typ<input name="subtype" list="subtypeList" autocomplete="off"></label>
+    </div>
+    <div class="row">
+      <label>Farbname<input name="color_name" autocomplete="off"></label>
+      <label class="narrow">Farbe<input name="color" type="color"></label>
+      <label class="narrow">Hex-Code<input name="hex" placeholder="#808080" maxlength="7" autocomplete="off" spellcheck="false"></label>
+    </div>
+    <div class="row">
+      <label>Gewicht pro Rolle (g)<input name="label_weight" type="number" min="100" step="50"></label>
+      <label>Lagerplatz (Rollen im Lager)<select name="location"></select></label>
+    </div>
+    <p id="editError" class="error"></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Abbrechen</button>
+      <button value="ok" class="primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="confirmDialog">
+  <form method="dialog">
+    <h2 id="confirmTitle"></h2>
+    <div id="confirmBody"></div>
+    <div class="actions">
+      <button value="no">Abbrechen</button>
+      <button value="yes" class="primary" id="confirmYes">Bestätigen</button>
+    </div>
+  </form>
+</dialog>
+
+<datalist id="brandList"></datalist>
+<datalist id="materialList"></datalist>
+<datalist id="subtypeList"></datalist>
+
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>

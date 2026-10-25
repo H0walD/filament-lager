@@ -1,0 +1,29 @@
+name: Filament-Lager
+version: "1.1.0"
+slug: filament_lager
+description: Übersichtliche Filament-Lagerverwaltung für Bambuddy mit Einkaufsliste, Hersteller-Logos und Benutzerrechten
+url: https://github.com/H0walD/filament-lager
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:printer-3d-nozzle
+panel_title: Filament-Lager
+# Auch Nicht-Admins sehen den Eintrag; was sie dürfen, regelt „benutzer“.
+panel_admin: false
+options:
+  bambuddy_url: http://homeassistant.local:8000
+  api_key: ""
+  benutzer: []
+  standard_recht: ansehen
+schema:
+  bambuddy_url: url
+  api_key: password
+  benutzer:
+    - name: str
+      recht: list(kein|ansehen|erfassen|bearbeiten|admin)
+  standard_recht: list(kein|ansehen|erfassen|bearbeiten|admin)

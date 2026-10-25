@@ -1,0 +1,16 @@
+# Änderungen
+
+## 1.1.0
+
+- Benutzerrechte in der App-Konfiguration (kein, ansehen, erfassen, bearbeiten, admin)
+- Eintrag in der Seitenleiste für alle Home-Assistant-Benutzer
+- Filter nach Hersteller, Material, Farbe und Lagerort, mit Mehrfachauswahl
+- Angebrochene Rollen, Lagerplatz und „zuletzt verwendet“ auf jeder Kachel
+- Sorten bearbeiten, Hex-Code bei der Farbe, Rollen ausbuchen
+- Bestätigung vor jedem Ein- und Ausbuchen
+- Farbe wird bei neuen Rollen zuverlässig übernommen
+
+## 1.0.0
+
+- Erste Version: Lagerübersicht, Einkaufsliste, Hersteller mit Logos
+- Automatischer Abgleich von RFID-Rollen mit dem Lager

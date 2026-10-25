@@ -1,0 +1,123 @@
+<p align="center">
+  <img src="images/icon.png" width="120" alt="Filament-Lager">
+</p>
+
+<h1 align="center">Filament-Lager</h1>
+
+<p align="center">
+  Übersichtliche Lagerverwaltung für 3D-Druck-Filament als App für Home Assistant.<br>
+  Arbeitet direkt mit <a href="https://github.com/maziggy/bambuddy">Bambuddy</a> zusammen: ein Bestand, keine doppelte Pflege.
+</p>
+
+<p align="center">
+  <a href="https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FH0walD%2Ffilament-lager">
+    <img src="https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg" alt="Repository zu Home Assistant hinzufügen">
+  </a>
+</p>
+
+![Lagerübersicht](images/lager.png)
+
+## Was die App kann
+
+Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, die Lagerverwaltung dort ist aber eher technisch. Filament-Lager legt eine einfache Oberfläche darüber und speichert alles direkt in Bambuddy.
+
+- **Übersicht auf einen Blick**: jede Sorte als Farbkachel, gruppiert nach Hersteller mit Logo. Du siehst Rollen im Lager und im Drucker, angebrochene Rollen, Restgewicht, Lagerplatz und wann das Material zuletzt verwendet wurde. Was knapp wird, ist orange markiert, was leer ist, rot.
+- **Schnell erfassen**: „+1 Rolle“ bei jeder Sorte oder „Neues Material“ mit Hersteller, Material, Typ, Farbe (auch als Hex-Code), Gewicht, Anzahl und Lagerplatz.
+- **Keine Doppelten**: Schreibweisen werden vereinheitlicht („bambu lab“ wird „Bambu Lab“), und gibt es eine Sorte schon, schlägt die App vor, die Rollen dort dazuzubuchen.
+- **Einkaufsliste**: Warenkorb-Knopf an jeder Sorte, Status „zu kaufen“, „bestellt“, „eingetroffen“. Beim Eintreffen werden die Rollen direkt ins Lager gebucht. Neben jedem Eintrag steht der aktuelle Lagerbestand.
+- **RFID-Abgleich**: Steckst du eine Bambu-Rolle mit Chip ins AMS, die du vorher schon im Lager erfasst hast, ordnet die App den Chip dieser Lager-Rolle zu. Nichts wird doppelt gezählt.
+- **Bearbeiten und Ausbuchen**: fehlende Angaben nachtragen, Farben korrigieren, eine zu viel erfasste Rolle wieder ausbuchen (wird in Bambuddy archiviert, nicht gelöscht).
+- **Bestätigung**: jedes Ein- und Ausbuchen von Hand fragt vorher nach.
+- **Filter**: nach Hersteller, Material, Farbfamilie und Lagerort, jeweils mit Mehrfachauswahl.
+- **Benutzerrechte**: pro Home-Assistant-Benutzer einstellbar, wer nur schauen, erfassen oder auch bearbeiten darf.
+- **Aktuell**: die Seite aktualisiert sich alle 15 Sekunden von selbst und funktioniert auch auf dem Handy und über Nabu Casa.
+
+## Bilder
+
+| Einkaufsliste | Hersteller |
+|---|---|
+| ![Einkaufsliste](images/einkaufsliste.png) | ![Hersteller](images/hersteller.png) |
+
+| Neues Material mit Hinweis auf vorhandene Sorte | Sorte bearbeiten |
+|---|---|
+| ![Neues Material](images/neues-material.png) | ![Bearbeiten](images/bearbeiten.png) |
+
+| Bestätigung vor dem Einbuchen | Filter mit Mehrfachauswahl |
+|---|---|
+| ![Bestätigen](images/bestaetigen.png) | ![Filter](images/filter.png) |
+
+| Benutzer | Auf dem Handy |
+|---|---|
+| ![Benutzer](images/benutzer.png) | <img src="images/handy.png" width="260" alt="Handy"> |
+
+## Voraussetzungen
+
+- Home Assistant OS oder Supervised (also mit App-Store, früher „Add-ons“)
+- [Bambuddy](https://github.com/maziggy/bambuddy), zum Beispiel als Home-Assistant-App, mit eingeschalteter Anmeldung
+- Ein API-Schlüssel aus Bambuddy mit dem Recht **Inventar verwalten**
+
+## Installation
+
+1. **Repository hinzufügen**: Klick oben auf den blauen Knopf „Repository zu Home Assistant hinzufügen“.
+   Oder von Hand: Einstellungen → Apps → App-Store → oben rechts ⋮ → **Repositories** → `https://github.com/H0walD/filament-lager` eintragen → Hinzufügen.
+2. **App installieren**: Im App-Store nach unten scrollen bis „Filament-Lager“, öffnen und **Installieren**. Die App wird dabei auf deinem Gerät gebaut, das dauert einen Moment.
+3. **API-Schlüssel anlegen**: In Bambuddy unter Einstellungen → API-Schlüssel einen neuen Schlüssel erstellen, das Recht „Inventar verwalten“ einschalten und den Schlüssel kopieren. Bambuddy zeigt ihn nur dieses eine Mal an.
+4. **Konfigurieren**: In der App den Reiter **Konfiguration** öffnen:
+   - **Bambuddy-Adresse**: wo Bambuddy läuft, z. B. `http://192.168.1.50:8000`
+   - **API-Schlüssel**: den kopierten Schlüssel einfügen
+   - **Benutzer und Rechte**: dich selbst mit deinem Home-Assistant-Benutzernamen als `admin` eintragen (siehe unten)
+   - Speichern
+5. **Starten**: Im Reiter Info auf **Starten** und „In der Seitenleiste anzeigen“ einschalten. Fertig, „Filament-Lager“ steht jetzt in der Seitenleiste.
+
+## Benutzer und Rechte
+
+Die Rechte stellst du unter Einstellungen → Apps → Filament-Lager → **Konfiguration** ein.
+
+| Recht | Darf |
+|---|---|
+| `kein` | nichts, sieht nur „Kein Zugriff“ |
+| `ansehen` | Lager, Einkaufsliste und Hersteller ansehen |
+| `erfassen` | zusätzlich Rollen einbuchen und die Einkaufsliste pflegen |
+| `bearbeiten` | zusätzlich Sorten ändern, Rollen ausbuchen, Hersteller und Logos pflegen |
+| `admin` | zusätzlich den Reiter „Benutzer“ sehen |
+
+- **Benutzer und Rechte**: ein Eintrag pro Person, mit dem Home-Assistant-**Benutzernamen** (nicht dem Anzeigenamen) und dem Recht.
+- **Standard-Recht**: gilt für alle, die nicht eingetragen sind. Voreingestellt ist `ansehen`.
+- Den Benutzernamen findest du in Home Assistant unter Einstellungen → Personen → Benutzer, oder in der App im Reiter „Benutzer“, sobald die Person die App einmal geöffnet hat.
+- Änderungen gelten sofort, ohne Neustart. Die App prüft die Rechte auch auf dem Server, nicht nur in der Anzeige.
+
+## Hersteller-Logos
+
+Für bekannte Hersteller (Bambu Lab, Polymaker, eSun, Sunlu, Elegoo, Prusament und viele mehr) holt die App das Logo automatisch von deren Webseite. Für alle anderen im Reiter **Hersteller** auf den Hersteller tippen und die Webseite eintragen oder ein eigenes Bild hochladen.
+
+## RFID-Rollen richtig erfassen
+
+Damit der Bestand stimmt, so vorgehen:
+
+1. Neue Rolle zuerst in Filament-Lager erfassen (oder über die Einkaufsliste „Eingetroffen“).
+2. Rolle ins AMS stecken. Bambuddy legt über den Chip eine Rolle an.
+3. Filament-Lager erkennt sie innerhalb einer Minute an Hersteller, Material, Typ und Farbe, hängt den Chip an deine Lager-Rolle und archiviert die doppelte.
+
+In Bambuddy muss dafür „Unbekannte RFID-Spulen automatisch hinzufügen“ eingeschaltet sein. Passt ein Chip zu mehreren Sorten, fragt die App oben unter „Vom Drucker erkannt“ nach.
+
+## Häufige Fragen
+
+**„Noch kein API-Schlüssel eingetragen“ oder „Bambuddy lehnt den Schlüssel ab“**
+Schlüssel in der Konfiguration prüfen. Er muss vollständig sein (beginnt mit `bb_`) und das Recht „Inventar verwalten“ haben.
+
+**„Bambuddy ist gerade nicht erreichbar“**
+Läuft Bambuddy? Stimmt die Bambuddy-Adresse in der Konfiguration?
+
+**Andere Benutzer sehen nur „Kein Zugriff“**
+Sie stehen nicht unter „Benutzer und Rechte“ und das Standard-Recht ist `kein`. Eintragen oder Standard-Recht ändern.
+
+**Ändert die App etwas an meinen Druckern?**
+Nur beim RFID-Abgleich: Die Lager-Rolle übernimmt den AMS-Platz der doppelten Chip-Rolle. Sonst liest und schreibt die App ausschließlich das Bambuddy-Inventar.
+
+## Datenschutz
+
+Alle Daten bleiben bei dir: Rollen, Einkaufsliste und Lagerplätze liegen in Bambuddy, Logos und Einstellungen in der App auf deinem Home-Assistant-Gerät. Nach außen geht nur der Abruf von Hersteller-Logos von den jeweiligen Webseiten.
+
+## Lizenz
+
+[MIT](LICENSE)
