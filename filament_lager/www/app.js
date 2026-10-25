@@ -197,7 +197,7 @@ async function load(quiet) {
   }
   if (!can(VIEW)) return;
   try {
-    const [spools, shop, rec, slots, brands, locations, usage, printers] = await Promise.all([api("api/inventory/spools"),
+    const [spools, shop, rec, slots, brands, locations, usage, printers] = await Promise.all([api("api/inventory/spools?include_archived=true"),
       api("api/inventory/shopping-list"), api("reconcile").catch(() => null), api("api/inventory/assignments").catch(() => []),
       api("brands").catch(() => ({})), api("api/inventory/locations").catch(() => []),
       api("api/inventory/usage?limit=500").catch(() => []), api("printers").catch(() => null)]);
@@ -221,6 +221,9 @@ async function load(quiet) {
       state.printers = printers.printers;
       state.currency = printers.currency || state.currency || "";
     }
+    // Ausgebuchte Rollen nur für den Verbrauchsverlauf behalten.
+    state.allSpools = new Map((Array.isArray(spools) ? spools : []).map((s) => [s.id, s]));
+    state.usageList = Array.isArray(usage) ? usage : [];
     state.spools = (Array.isArray(spools) ? spools : []).filter((s) => !s.archived_at);
     state.shop = Array.isArray(shop) ? shop : [];
     state.reconcile = rec || { merged: [], unclear: [] };
@@ -336,6 +339,7 @@ function render() {
   renderShop();
   renderBrands();
   renderLists();
+  renderUsage();
 }
 
 // Gleicher Schlüssel wie im Server (brand_key), damit Webseite und Logo zusammenpassen.
@@ -684,7 +688,7 @@ document.addEventListener("click", (ev) => {
   if (!btn) return;
   if (btn.classList.contains("tab")) {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
-    for (const name of ["stock", "shop", "brands", "users"]) $("#tab-" + name).classList.toggle("hidden", btn.dataset.tab !== name);
+    for (const name of ["stock", "shop", "usage", "brands", "users"]) $("#tab-" + name).classList.toggle("hidden", btn.dataset.tab !== name);
     if (btn.dataset.tab === "users") loadUsers();
     try { localStorage.setItem("tab", btn.dataset.tab); } catch { /* egal */ }
     return;
@@ -940,6 +944,112 @@ $("#editForm").addEventListener("submit", async (ev) => {
     $("#editError").textContent = "Konnte nicht speichern: " + e.message;
   }
 });
+
+// ---------- Verbrauch: wann wurde wie viel von welcher Rolle abgebucht ----------
+
+function fmtDateTime(iso) {
+  if (!iso) return "";
+  const d = new Date(/Z|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + "Z");
+  return isNaN(d) ? "" : d.toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function usageEntries() {
+  const days = parseInt($("#usagePeriod").value, 10) || 0;
+  const since = days ? Date.now() - days * 86400000 : 0;
+  const words = norm($("#usageSearch").value).split(/\s+/).filter(Boolean);
+  return (state.usageList || []).map((u) => ({ ...u, spool: state.allSpools?.get(u.spool_id) || null }))
+    .filter((u) => {
+      const t = new Date(/Z|[+-]\d\d:?\d\d$/.test(u.created_at || "") ? u.created_at : (u.created_at || "") + "Z").getTime();
+      if (since && !(t >= since)) return false;
+      const hay = norm([u.spool ? rollName(u.spool) : "", u.print_name, "rolle " + u.spool_id].join(" "));
+      return words.every((w) => hay.includes(w));
+    })
+    .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+}
+
+function renderUsage() {
+  const list = usageEntries();
+  const grams = list.reduce((n, u) => n + (u.weight_used || 0), 0);
+  const cost = list.reduce((n, u) => n + (u.cost || 0), 0);
+  const prints = usageJobs(list).length;
+  $("#usageSummary").innerHTML = `
+    <div class="stat"><b>${kg(grams)}</b><span class="muted">verbraucht</span></div>
+    <div class="stat"><b>${list.length}</b><span class="muted">Abbuchungen</span></div>
+    <div class="stat"><b>${prints}</b><span class="muted">Drucke</span></div>
+    ${cost ? `<div class="stat"><b>${money(cost)}</b><span class="muted">Materialkosten</span></div>` : ""}`;
+
+  // Verbrauch je Sorte, größter zuerst.
+  const bySort = new Map();
+  for (const u of list) {
+    const s = u.spool || {};
+    const k = groupKey(s);
+    const e = bySort.get(k) || { s, grams: 0 };
+    e.grams += u.weight_used || 0;
+    bySort.set(k, e);
+  }
+  const sorts = [...bySort.values()].sort((a, b) => b.grams - a.grams).slice(0, 10);
+  const max = sorts[0]?.grams || 1;
+  $("#usageBySort").innerHTML = sorts.length ? `<h3 class="usageHead">Nach Sorte</h3>` + sorts.map((e) => `<div class="sortRow">${dot(e.s.rgba)}
+      <span class="sortName">${esc(e.s.color_name || "Unbekannte Rolle")} <span class="muted">${esc([e.s.brand, e.s.material, e.s.subtype].filter(Boolean).join(" "))}</span></span>
+      <span class="sortBar"><span style="width:${Math.max(2, Math.round(e.grams / max * 100))}%;background:${/^[0-9a-f]{6}/i.test(e.s.rgba || "") ? "#" + e.s.rgba.slice(0, 6) : "var(--accent)"}"></span></span>
+      <b class="sortGrams">${kg(e.grams)}</b></div>`).join("") : "";
+
+  const printerName = (id) => ((state.printers || []).length > 1 ? (state.printers.find((p) => p.id === id)?.name || "") : "");
+  const jobs = usageJobs(list);
+  $("#usageList").innerHTML = jobs.length ? jobs.map((j) => {
+    const status = j.status && j.status !== "completed" ? ` <span class="missing">(${j.status === "failed" ? "abgebrochen" : esc(j.status)})</span>` : "";
+    const cost = j.items.reduce((n, u) => n + (u.cost || 0), 0);
+    const grams = j.items.reduce((n, u) => n + (u.weight_used || 0), 0);
+    return `<div class="jobCard">
+      <div class="jobHead"><b>${esc(j.print_name || "Druck")}</b>${status}
+        <span class="muted">${fmtDateTime(j.created_at)}${printerName(j.printer_id) ? " · " + esc(printerName(j.printer_id)) : ""}</span>
+        <span class="jobTotal"><b>−${Math.round(grams)} g</b>${cost ? ` <span class="muted">${money(cost)}</span>` : ""}</span></div>
+      <div class="jobRows">
+        <div class="jobRow jobLabels muted"><span></span><span>Rolle</span><span>vorher</span><span>abgebucht</span><span>danach</span></div>
+        ${j.items.map((u) => {
+          const s = u.spool;
+          return `<div class="jobRow">${dot(s?.rgba)}
+            <span class="usageRoll"><b>${esc(s?.color_name || "Unbekannte Rolle")}</b> <span class="muted">${esc(s ? [s.brand, s.material, s.subtype].filter(Boolean).join(" ") : "")} · Rolle ${u.spool_id}${s?.archived_at ? " · ausgebucht" : ""}</span></span>
+            <span class="num">${u.before == null ? "–" : Math.round(u.before) + " g"}</span>
+            <span class="num minus">−${Math.round(u.weight_used)} g</span>
+            <span class="num"><b>${u.after == null ? "–" : Math.round(u.after) + " g"}</b></span></div>`;
+        }).join("")}
+      </div></div>`;
+  }).join("") : `<div class="emptyState">${(state.usageList || []).length ? "In diesem Zeitraum wurde nichts abgebucht." : "Noch kein Verbrauch erfasst. Bambuddy bucht nach jedem fertigen Druck ab."}</div>`;
+}
+
+// Bambuddy speichert pro Abbuchung nur die Gramm. Den Stand davor und danach rechnen wir vom heutigen
+// Restgewicht der Rolle rückwärts: danach = Rest heute + alles, was später abgebucht wurde.
+function rollHistory() {
+  const map = new Map();
+  const sorted = [...(state.usageList || [])].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "") || b.id - a.id);
+  const running = new Map();
+  for (const u of sorted) {
+    const s = state.allSpools?.get(u.spool_id);
+    if (!s) continue;
+    const after = running.has(u.spool_id) ? running.get(u.spool_id) : remaining(s);
+    const before = after + (u.weight_used || 0);
+    running.set(u.spool_id, before);
+    map.set(u.id, { before, after });
+  }
+  return map;
+}
+
+function usageJobs(list) {
+  // Einträge desselben Drucks (gleicher Name, Drucker und Zeitpunkt auf die Minute) zusammenfassen.
+  const hist = rollHistory();
+  const jobs = new Map();
+  for (const u of list) {
+    const key = [u.print_name || "", u.printer_id ?? "", (u.created_at || "").slice(0, 16)].join("|");
+    if (!jobs.has(key)) jobs.set(key, { print_name: u.print_name, printer_id: u.printer_id, created_at: u.created_at, status: u.status, items: [] });
+    const h = hist.get(u.id) || {};
+    jobs.get(key).items.push({ ...u, before: h.before, after: h.after });
+  }
+  return [...jobs.values()];
+}
+
+$("#usagePeriod").addEventListener("change", renderUsage);
+$("#usageSearch").addEventListener("input", renderUsage);
 
 // ---------- Drucker: Rollen einlegen, herausnehmen, nicht zugeordnete Plätze ----------
 

@@ -221,3 +221,33 @@ dialog.wide { width: min(620px, 96vw); }
   .tileActions { flex-wrap: wrap; }
 }
 .chipBox p { margin: 0; }
+.periodSel { width: auto; }
+.usageHead { font-size: 15px; margin: 6px 0 8px; }
+.usageBySort { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.sortRow { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; }
+.sortName { flex: 0 0 34%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sortBar { flex: 1; height: 10px; background: var(--chip); border-radius: 5px; overflow: hidden; }
+.sortBar > span { display: block; height: 100%; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(128,128,128,.35); }
+.sortGrams { flex: 0 0 70px; text-align: right; }
+.usageItem { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; display: flex; gap: 12px; align-items: center; margin-bottom: 6px; }
+.usageDate { flex: 0 0 140px; font-size: 13px; color: var(--muted); }
+.usageRoll { flex: 1; min-width: 0; }
+.usageGrams { display: flex; flex-direction: column; align-items: flex-end; font-size: 15px; }
+@media (max-width: 520px) {
+  .usageItem { flex-wrap: wrap; }
+  .usageDate { flex-basis: 100%; }
+  .sortName { flex-basis: 45%; }
+}
+.tabs { overflow-x: auto; scrollbar-width: none; } .tab { white-space: nowrap; flex: none; }
+.jobCard { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.jobHead { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; }
+.jobTotal { margin-left: auto; }
+.jobRow { display: grid; grid-template-columns: 22px minmax(0, 1fr) 80px 90px 80px; gap: 10px; align-items: center; padding: 4px 0; border-top: 1px solid var(--border); }
+.jobRow.jobLabels { border-top: none; font-size: 12px; padding: 0; }
+.jobRow .num { text-align: right; font-variant-numeric: tabular-nums; }
+.jobRow .minus { color: var(--warn); font-weight: 600; }
+.jobRow .usageRoll { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 520px) {
+  .jobRow { grid-template-columns: 22px minmax(0, 1fr) 58px 62px 58px; gap: 6px; font-size: 13px; }
+  .jobRow .usageRoll .muted { display: none; }
+}

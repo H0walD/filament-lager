@@ -19,6 +19,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="stock">Lager <span id="stockCount" class="pill"></span></button>
     <button class="tab" data-tab="shop">Einkaufsliste <span id="shopCount" class="pill"></span></button>
+    <button class="tab" data-tab="usage">Verbrauch</button>
     <button class="tab" data-tab="brands">Hersteller <span id="brandCount" class="pill"></span></button>
     <button class="tab need-admin" data-tab="users">Benutzer</button>
   </nav>
@@ -43,6 +44,22 @@
     </div>
     <div id="summary" class="summary"></div>
     <div id="brands"></div>
+  </section>
+
+  <section id="tab-usage" class="hidden">
+    <div class="toolbar">
+      <input id="usageSearch" type="search" placeholder="Suchen: Rolle, Farbe, Druck …">
+      <select id="usagePeriod" class="periodSel">
+        <option value="7">Letzte 7 Tage</option>
+        <option value="30" selected>Letzte 30 Tage</option>
+        <option value="90">Letzte 90 Tage</option>
+        <option value="0">Alles</option>
+      </select>
+    </div>
+    <div id="usageSummary" class="summary"></div>
+    <div id="usageBySort" class="usageBySort"></div>
+    <h3 class="usageHead">Druckaufträge</h3>
+    <div id="usageList"></div>
   </section>
 
   <section id="tab-shop" class="hidden">

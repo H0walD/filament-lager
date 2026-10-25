@@ -1,5 +1,13 @@
 # Änderungen
 
+## 1.3.4
+
+- Verbrauch nach Druckauftrag: pro Rolle Gewicht vorher, abgebucht und danach
+
+## 1.3.3
+
+- Neuer Reiter „Verbrauch“: jede Abbuchung mit Datum, Uhrzeit, Rolle, Druck und Gramm, dazu Summen und Verbrauch nach Sorte für 7, 30, 90 Tage oder alles
+
 ## 1.3.2
 
 - Dunkles Design ist Standard auf allen Geräten

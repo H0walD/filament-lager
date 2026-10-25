@@ -27,6 +27,7 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 - **Einkaufsliste**: Warenkorb-Knopf an jeder Sorte, Status „zu kaufen“, „bestellt“, „eingetroffen“. Beim Eintreffen werden die Rollen direkt ins Lager gebucht. Neben jedem Eintrag steht der aktuelle Lagerbestand.
 - **Rollen im Drucker**: „🖨“ legt eine Rolle in einen AMS-Platz oder auf die externe Spule. So zieht Bambuddy auch bei Rollen ohne Chip den Verbrauch jedes Drucks ab. Steckt eine Rolle ohne Zuordnung im Drucker, zeigt die App oben einen Hinweis mit „Lager-Rolle zuordnen“. Auf jeder Kachel steht, in welchem Platz die Rollen stecken.
 - **Rollen einzeln**: „☰“ zeigt jede Rolle mit Restgewicht, Platz, Wert und den letzten Drucken samt Verbrauch. Lagerplatz und Restgewicht lassen sich dort pro Rolle ändern. Das Restgewicht lässt sich direkt eintragen oder aus dem Gewicht auf der Waage berechnen (das Leergewicht der Spule wird abgezogen).
+- **Verbrauch**: eigener Reiter, aufgelistet nach Druckauftrag. Pro Rolle siehst du das Gewicht vorher, was abgebucht wurde und was danach noch drauf ist, dazu Kosten, Summen und Verbrauch nach Sorte für 7, 30 oder 90 Tage. Vorher und danach werden aus dem heutigen Restgewicht zurückgerechnet; hast du eine Rolle zwischendurch nachgewogen, stimmen die Werte vor diesem Zeitpunkt nur ungefähr.
 - **Preise**: Preis pro kg je Sorte, daraus Wert pro Rolle und Lagerwert.
 - **RFID-Abgleich**: Steckst du eine Bambu-Rolle mit Chip ins AMS, die du vorher schon im Lager erfasst hast, ordnet die App den Chip dieser Lager-Rolle zu. Nichts wird doppelt gezählt.
 - **Bearbeiten und Ausbuchen**: fehlende Angaben nachtragen, Farben korrigieren, eine zu viel erfasste Rolle wieder ausbuchen (wird in Bambuddy archiviert, nicht gelöscht).
@@ -57,6 +58,10 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 | Rolle in den Drucker einlegen | Rollen einzeln mit Restgewicht und Verbrauch |
 |---|---|
 | ![Einlegen](images/einlegen.png) | ![Rollen](images/rollen.png) |
+
+| Verbrauch | |
+|---|---|
+| ![Verbrauch](images/verbrauch.png) | |
 
 | Benutzer | Auf dem Handy |
 |---|---|
