@@ -192,8 +192,21 @@ async function explainError() {
 // ---------- Darstellung ----------
 
 function logoHtml(brand, cls = "") {
-  const initials = esc((brand || "?").replace(/[^A-Za-z0-9 ]/g, "").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?");
-  return `<span class="logo ${cls}" data-initials="${initials}"><img src="logo/${encodeURIComponent(brand)}?v=${state.logoVersion}" alt="" onerror="this.parentNode.textContent=this.parentNode.dataset.initials"></span>`;
+  // Nur hochgeladene Logos; ohne Logo bleibt nur der Name.
+  if (!(state.brands || {})[brandKey(brand)]?.logo) return "";
+  return `<span class="logo ${cls}"><img src="logo/${encodeURIComponent(brand)}?v=${state.logoVersion}" alt="" onerror="this.parentNode.remove()"></span>`;
+}
+
+function websiteOf(brand) {
+  const w = (state.brands || {})[brandKey(brand)]?.website || "";
+  return w ? (/^https?:\/\//i.test(w) ? w : "https://" + w) : "";
+}
+
+function websiteLink(brand) {
+  const url = websiteOf(brand);
+  if (!url) return "";
+  const label = url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  return `<a class="siteLink" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Webseite öffnen">🔗 ${esc(label)}</a>`;
 }
 
 function color(g) {
@@ -291,11 +304,13 @@ function renderBrands() {
   const list = allBrands();
   $("#brandCount").textContent = list.length || "";
   $("#brandGrid").innerHTML = list.length ? list.map((b) => `
-    <button class="brandCard" data-act="brand" data-brand="${esc(b.name)}">
+    <div class="brandCard">
       ${logoHtml(b.name, "big")}
       <span class="brandCardName">${esc(b.name)}</span>
-      <span class="muted">${b.rolls} ${b.rolls === 1 ? "Rolle" : "Rollen"}${b.website ? " · " + esc(b.website) : ""}</span>
-    </button>`).join("") : `<div class="emptyState">Noch keine Hersteller.</div>`;
+      <span class="muted">${b.rolls} ${b.rolls === 1 ? "Rolle" : "Rollen"}</span>
+      ${websiteLink(b.name) || `<span class="muted">keine Webseite</span>`}
+      <button class="need-edit" data-act="brand" data-brand="${esc(b.name)}">Bearbeiten</button>
+    </div>`).join("") : `<div class="emptyState">Noch keine Hersteller.</div>`;
 }
 
 const FILTER_UI = { brand: ["#fBrand", "Alle Hersteller"], material: ["#fMaterial", "Alle Materialien"], color: ["#fColor", "Alle Farben"], place: ["#fPlace", "Alle Lagerorte"] };
@@ -407,7 +422,8 @@ function renderStock() {
     const count = list.reduce((n, g) => n + g.spools.length, 0);
     return `<div class="brand">
       <div class="brandHead">${logoHtml(brand)}<h2>${esc(brand)}</h2><span class="muted">${count} ${count === 1 ? "Rolle" : "Rollen"}</span>
-        <button class="icon need-edit" data-act="brand" data-brand="${esc(brand)}" title="Logo ändern">✎</button></div>
+        ${websiteLink(brand)}
+        <button class="icon need-edit" data-act="brand" data-brand="${esc(brand)}" title="Hersteller bearbeiten">✎</button></div>
       <div class="grid">${list.map(tileHtml).join("")}</div></div>`;
   }).join("");
 }
@@ -886,7 +902,8 @@ $("#brandForm").addEventListener("submit", async (ev) => {
   }
   try {
     await api(`brands/${encodeURIComponent(currentBrand)}`, { method: "PUT", body: JSON.stringify({ website: form.website.value, name: currentBrand }) });
-    if (file) await api(`logo/${encodeURIComponent(currentBrand)}`, { method: "POST", body: file, headers: { "Content-Type": file.type || "image/png" } });
+    if (can(ADMIN) && form.removeLogo.checked && !file) await api(`logo/${encodeURIComponent(currentBrand)}`, { method: "DELETE" });
+    if (can(ADMIN) && file) await api(`logo/${encodeURIComponent(currentBrand)}`, { method: "POST", body: file, headers: { "Content-Type": file.type || "image/png" } });
     state.logoVersion = Date.now();
     $("#brandDialog").close();
     state.brands = await api("brands").catch(() => state.brands);

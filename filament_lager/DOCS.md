@@ -18,8 +18,8 @@
 | `kein` | nichts |
 | `ansehen` | alles ansehen |
 | `erfassen` | Rollen einbuchen, Einkaufsliste pflegen |
-| `bearbeiten` | zusätzlich Sorten ändern, ausbuchen, Hersteller pflegen |
-| `admin` | zusätzlich Übersicht „Benutzer“ |
+| `bearbeiten` | zusätzlich Sorten ändern, ausbuchen, Hersteller-Webseiten pflegen |
+| `admin` | zusätzlich Logos hochladen und Übersicht „Benutzer“ |
 
 Wer nicht unter **Benutzer und Rechte** steht, bekommt das **Standard-Recht**. Änderungen gelten sofort.
 

@@ -147,7 +147,12 @@ input[type=color] { height: 38px; padding: 2px; }
   background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 10px;
   display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
 }
-.brandCardName { font-weight: 600; font-size: 15px; }
+.brandCardName { font-weight: 600; font-size: 17px; }
+.brandCard button { margin-top: 4px; font-size: 13px; padding: 5px 12px; }
+.siteLink { color: var(--accent); text-decoration: none; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.siteLink:hover { text-decoration: underline; }
+.removeLogoRow span { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.removeLogoRow input { width: auto; }
 .confirmLine { display: flex; align-items: center; gap: 10px; font-size: 15px; }
 .confirmLine .swatch { width: 32px; height: 32px; }
 .confirmNote { font-size: 13px; color: var(--muted); margin: 8px 0 0; }

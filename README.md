@@ -21,7 +21,7 @@
 
 Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, die Lagerverwaltung dort ist aber eher technisch. Filament-Lager legt eine einfache Oberfläche darüber und speichert alles direkt in Bambuddy.
 
-- **Übersicht auf einen Blick**: jede Sorte als Farbkachel, gruppiert nach Hersteller mit Logo. Du siehst Rollen im Lager und im Drucker, angebrochene Rollen, Restgewicht, Lagerplatz und wann das Material zuletzt verwendet wurde. Was knapp wird, ist orange markiert, was leer ist, rot.
+- **Übersicht auf einen Blick**: jede Sorte als Farbkachel, gruppiert nach Hersteller (mit eigenem Logo und Link zur Webseite). Du siehst Rollen im Lager und im Drucker, angebrochene Rollen, Restgewicht, Lagerplatz und wann das Material zuletzt verwendet wurde. Was knapp wird, ist orange markiert, was leer ist, rot.
 - **Schnell erfassen**: „+1 Rolle“ bei jeder Sorte oder „Neues Material“ mit Hersteller, Material, Typ, Farbe (auch als Hex-Code), Gewicht, Anzahl und Lagerplatz.
 - **Keine Doppelten**: Schreibweisen werden vereinheitlicht („bambu lab“ wird „Bambu Lab“), und gibt es eine Sorte schon, schlägt die App vor, die Rollen dort dazuzubuchen.
 - **Einkaufsliste**: Warenkorb-Knopf an jeder Sorte, Status „zu kaufen“, „bestellt“, „eingetroffen“. Beim Eintreffen werden die Rollen direkt ins Lager gebucht. Neben jedem Eintrag steht der aktuelle Lagerbestand.
@@ -37,6 +37,10 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 | Einkaufsliste | Hersteller |
 |---|---|
 | ![Einkaufsliste](images/einkaufsliste.png) | ![Hersteller](images/hersteller.png) |
+
+| Hersteller bearbeiten (Webseite, Logo) | |
+|---|---|
+| ![Hersteller bearbeiten](images/hersteller-bearbeiten.png) | |
 
 | Neues Material mit Hinweis auf vorhandene Sorte | Sorte bearbeiten |
 |---|---|
@@ -78,17 +82,24 @@ Die Rechte stellst du unter Einstellungen → Apps → Filament-Lager → **Konf
 | `kein` | nichts, sieht nur „Kein Zugriff“ |
 | `ansehen` | Lager, Einkaufsliste und Hersteller ansehen |
 | `erfassen` | zusätzlich Rollen einbuchen und die Einkaufsliste pflegen |
-| `bearbeiten` | zusätzlich Sorten ändern, Rollen ausbuchen, Hersteller und Logos pflegen |
-| `admin` | zusätzlich den Reiter „Benutzer“ sehen |
+| `bearbeiten` | zusätzlich Sorten ändern, Rollen ausbuchen, Hersteller und Webseiten pflegen |
+| `admin` | zusätzlich Logos hochladen und den Reiter „Benutzer“ sehen |
 
 - **Benutzer und Rechte**: ein Eintrag pro Person, mit dem Home-Assistant-**Benutzernamen** (nicht dem Anzeigenamen) und dem Recht.
 - **Standard-Recht**: gilt für alle, die nicht eingetragen sind. Voreingestellt ist `ansehen`.
 - Den Benutzernamen findest du in Home Assistant unter Einstellungen → Personen → Benutzer, oder in der App im Reiter „Benutzer“, sobald die Person die App einmal geöffnet hat.
 - Änderungen gelten sofort, ohne Neustart. Die App prüft die Rechte auch auf dem Server, nicht nur in der Anzeige.
 
-## Hersteller-Logos
+## Hersteller, Webseiten und Logos
 
-Für bekannte Hersteller (Bambu Lab, Polymaker, eSun, Sunlu, Elegoo, Prusament und viele mehr) holt die App das Logo automatisch von deren Webseite. Für alle anderen im Reiter **Hersteller** auf den Hersteller tippen und die Webseite eintragen oder ein eigenes Bild hochladen.
+Im Reiter **Hersteller** siehst du alle Hersteller mit Anzahl Rollen und Webseite.
+
+- **Webseite**: mit dem Recht `bearbeiten` trägst du sie unter „Bearbeiten“ ein. Sie erscheint dann als Link im Lager und auf der Hersteller-Seite, so findest du den Shop schnell.
+- **Logo**: Admins laden es dort als PNG, JPG, WebP oder GIF hoch. Ohne Logo zeigt die App einfach den Namen. Logos werden nie automatisch aus dem Internet geholt.
+
+## Sichtbarkeit in der Seitenleiste
+
+Home Assistant kennt für App-Einträge in der Seitenleiste nur „alle Benutzer“ oder „nur Admins“. Filament-Lager ist für alle Benutzer freigegeben; wer das Recht `kein` hat, sieht beim Öffnen nur „Kein Zugriff“. Jeder Benutzer kann den Eintrag zusätzlich in seinem Profil unter **Seitenleiste bearbeiten** ausblenden.
 
 ## RFID-Rollen richtig erfassen
 
@@ -116,7 +127,7 @@ Nur beim RFID-Abgleich: Die Lager-Rolle übernimmt den AMS-Platz der doppelten C
 
 ## Datenschutz
 
-Alle Daten bleiben bei dir: Rollen, Einkaufsliste und Lagerplätze liegen in Bambuddy, Logos und Einstellungen in der App auf deinem Home-Assistant-Gerät. Nach außen geht nur der Abruf von Hersteller-Logos von den jeweiligen Webseiten.
+Alle Daten bleiben bei dir: Rollen, Einkaufsliste und Lagerplätze liegen in Bambuddy, Logos und Einstellungen in der App auf deinem Home-Assistant-Gerät. Die App selbst baut keine Verbindung ins Internet auf.
 
 ## Lizenz
 

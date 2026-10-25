@@ -1,7 +1,7 @@
 """Filament-Lager: kleine Oberfläche für das Bambuddy-Inventar.
 
 Liefert die Web-Oberfläche aus, reicht Inventar-Aufrufe mit dem API-Schlüssel
-an Bambuddy weiter und verwaltet Hersteller-Logos.
+an Bambuddy weiter und verwaltet Hersteller (Webseite, hochgeladenes Logo).
 """
 
 import json
@@ -22,52 +22,7 @@ WWW_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "www")
 PORT = 8099
 DEFAULT_BAMBUDDY = "http://homeassistant.local:8000"
 INGRESS_PEER = "172.30.32.2"
-LOGO_RETRY_SECONDS = 24 * 3600
 MAX_UPLOAD = 2 * 1024 * 1024
-
-# Bekannte Hersteller und ihre Webseiten, aus denen das Logo geholt wird.
-KNOWN_DOMAINS = {
-    "bambu": "bambulab.com",
-    "bambulab": "bambulab.com",
-    "polymaker": "polymaker.com",
-    "polyterra": "polymaker.com",
-    "polylite": "polymaker.com",
-    "esun": "esun3d.com",
-    "sunlu": "sunlu.com",
-    "elegoo": "elegoo.com",
-    "prusament": "prusa3d.com",
-    "prusa": "prusa3d.com",
-    "jayo": "jayo3d.com",
-    "eryone": "eryone3d.com",
-    "geeetech": "geeetech.com",
-    "overture": "overture3d.com",
-    "anycubic": "anycubic.com",
-    "creality": "creality.com",
-    "kingroon": "kingroon.com",
-    "extrudr": "extrudr.com",
-    "dasfilament": "dasfilament.de",
-    "fillamentum": "fillamentum.com",
-    "colorfabb": "colorfabb.com",
-    "formfutura": "formfutura.com",
-    "3djake": "3djake.de",
-    "azurefilm": "azurefilm.com",
-    "spectrum": "spectrumfilaments.com",
-    "devildesign": "devildesign.com",
-    "qidi": "qidi3d.com",
-    "ziro": "ziro3d.com",
-    "amolen": "amolen.com",
-    "tinmorry": "tinmorry.com",
-    "r3d": "r3dfilament.com",
-    "flashforge": "flashforge.com",
-    "snapmaker": "snapmaker.com",
-    "inland": "microcenter.com",
-    "hatchbox": "hatchbox3d.com",
-    "atomic": "atomicfilament.com",
-    "3dxtech": "3dxtech.com",
-    "rosa3d": "rosa3d.pl",
-    "add:north": "addnorth.com",
-    "addnorth": "addnorth.com",
-}
 
 
 def load_options():
@@ -95,29 +50,6 @@ def save_brands(brands):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(brands, f, ensure_ascii=False, indent=1)
     os.replace(tmp, BRANDS_FILE)
-
-
-def brand_domain(brand):
-    key = brand_key(brand)
-    website = load_brands().get(key, {}).get("website")
-    if website:
-        return re.sub(r"^https?://", "", website).split("/")[0]
-    if key in KNOWN_DOMAINS:
-        return KNOWN_DOMAINS[key]
-    for prefix, domain in KNOWN_DOMAINS.items():
-        if key.startswith(prefix):
-            return domain
-    return None
-
-
-def fetch_image(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 Filament-Lager"})
-    with urllib.request.urlopen(req, timeout=8) as resp:
-        ctype = resp.headers.get("Content-Type", "").split(";")[0].strip()
-        body = resp.read(MAX_UPLOAD + 1)
-    if not ctype.startswith("image/") or len(body) < 100 or len(body) > MAX_UPLOAD:
-        return None
-    return ctype, body
 
 
 def logo_paths(key):
@@ -149,38 +81,11 @@ def write_logo(key, ctype, body, source):
         json.dump({"type": ctype, "source": source, "time": time.time()}, f)
 
 
-def mark_missing(key):
-    _, meta = logo_paths(key)
-    with open(meta, "w", encoding="utf-8") as f:
-        json.dump({"missing": True, "time": time.time()}, f)
-
-
 def get_logo(brand):
+    # Nur selbst hochgeladene Logos; es wird nichts aus dem Internet geholt.
     key = brand_key(brand)
-    if not key:
-        return None
-    cached = read_logo(key)
-    if cached and not cached.get("missing"):
-        return cached
-    if cached and time.time() - cached.get("time", 0) < LOGO_RETRY_SECONDS:
-        return None
-    domain = brand_domain(brand)
-    if not domain:
-        mark_missing(key)
-        return None
-    for url in (
-        f"https://{domain}/apple-touch-icon.png",
-        f"https://www.google.com/s2/favicons?domain={domain}&sz=128",
-    ):
-        try:
-            result = fetch_image(url)
-        except (urllib.error.URLError, OSError, ValueError):
-            result = None
-        if result:
-            write_logo(key, result[0], result[1], url)
-            return {"type": result[0], "body": result[1]}
-    mark_missing(key)
-    return None
+    info = read_logo(key) if key else None
+    return info if info and info.get("source") == "upload" and "body" in info else None
 
 
 # ---------- Benutzer und Rechte ----------
@@ -245,6 +150,8 @@ def required_level(method, path):
     if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users"))):
         return NONE
     if path.startswith("/users"):
+        return ADMIN
+    if path.startswith("/logo/") and method != "GET":
         return ADMIN
     if method == "GET":
         return VIEW
@@ -311,7 +218,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/reconcile":
                 return self.reconcile()
             if path == "/brands":
-                return self.send(200, load_brands())
+                # Mit Hinweis, ob ein Logo hochgeladen ist, damit die Seite nicht ins Leere fragt.
+                brands = load_brands()
+                for key, entry in brands.items():
+                    entry["logo"] = get_logo(key) is not None
+                return self.send(200, brands)
             if path.startswith("/brands/"):
                 return self.brand_settings(unquote(path[len("/brands/"):]))
             if path.startswith("/logo/"):
@@ -432,12 +343,6 @@ class Handler(BaseHTTPRequestHandler):
         entry["name"] = (data.get("name") or entry.get("name") or brand).strip()
         brands[key] = entry
         save_brands(brands)
-        # Logo beim nächsten Abruf neu holen, falls kein eigenes hochgeladen ist.
-        cached = read_logo(key)
-        if not cached or cached.get("missing") or cached.get("source") != "upload":
-            for p in logo_paths(key):
-                if os.path.exists(p):
-                    os.remove(p)
         self.send(200, entry)
 
     def logo(self, brand):
@@ -451,8 +356,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, info["body"], info["type"], {"Cache-Control": "max-age=3600"})
         if self.command in ("POST", "PUT"):
             ctype = (self.headers.get("Content-Type") or "").split(";")[0]
-            if not ctype.startswith("image/"):
-                return self.send(400, {"detail": "Bitte ein Bild hochladen"})
+            # Kein SVG: das könnte Skripte enthalten und liefe im Kontext der App.
+            if ctype not in ("image/png", "image/jpeg", "image/webp", "image/gif"):
+                return self.send(400, {"detail": "Bitte ein PNG-, JPG-, WebP- oder GIF-Bild hochladen"})
             write_logo(key, ctype, self.read_body(), "upload")
             return self.send(200, {"ok": True})
         if self.command == "DELETE":

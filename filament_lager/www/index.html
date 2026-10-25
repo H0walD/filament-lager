@@ -106,8 +106,9 @@
     <h2 id="brandTitle">Hersteller <span id="brandName"></span></h2>
     <label id="brandNameField" class="hidden">Name des Herstellers<input name="brandname" autocomplete="off"></label>
     <div class="brandPreview"><span id="brandLogoPreview"></span></div>
-    <label>Webseite des Herstellers (Logo wird von dort geholt)<input name="website" placeholder="z. B. polymaker.com"></label>
-    <label>Oder eigenes Logo hochladen<input name="file" type="file" accept="image/*"></label>
+    <label>Webseite des Herstellers<input name="website" placeholder="z. B. polymaker.com" autocomplete="off"></label>
+    <label class="need-admin">Logo hochladen (PNG, JPG, WebP)<input name="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+    <label class="need-admin removeLogoRow"><span><input name="removeLogo" type="checkbox"> Vorhandenes Logo entfernen</span></label>
     <div class="actions">
       <button value="cancel" formnovalidate>Abbrechen</button>
       <button value="ok" class="primary">Speichern</button>
