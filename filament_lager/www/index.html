@@ -31,6 +31,7 @@
       <button id="addNew" class="primary need-add">+ Neues Material</button>
     </div>
     <div id="chipBox" class="chipBox hidden"></div>
+    <div id="slotBox" class="chipBox hidden"></div>
     <div class="filters">
       <div class="msWrap"><span class="msLabel">Hersteller</span><div class="ms" id="fBrand"></div></div>
       <div class="msWrap"><span class="msLabel">Material</span><div class="ms" id="fMaterial"></div></div>
@@ -64,7 +65,7 @@
     <div class="toolbar"><span class="muted">Rechte stellst du in Home Assistant ein: <b>Einstellungen → Apps → Filament-Lager → Konfiguration</b>, Feld <b>benutzer</b>. Als Name den Benutzernamen von hier eintragen. Wer nicht eingetragen ist, bekommt das <b>standard_recht</b>.</span></div>
     <div id="userList"></div>
     <div class="muted" style="margin-top:12px">
-      <b>kein</b>: kein Zugriff · <b>ansehen</b>: nur schauen · <b>erfassen</b>: Rollen einbuchen, Einkaufsliste · <b>bearbeiten</b>: zusätzlich Sorten ändern, ausbuchen, Hersteller · <b>admin</b>: zusätzlich diese Übersicht
+      <b>kein</b>: kein Zugriff · <b>ansehen</b>: nur schauen · <b>erfassen</b>: Rollen einbuchen, in den Drucker einlegen, Einkaufsliste · <b>bearbeiten</b>: zusätzlich Sorten, Restgewicht und Preise ändern, ausbuchen, Hersteller · <b>admin</b>: zusätzlich diese Übersicht
     </div>
   </section>
 
@@ -91,6 +92,7 @@
       <label>Gewicht pro Rolle (g)<input name="label_weight" type="number" min="100" step="50" value="1000"></label>
       <label class="narrow">Anzahl Rollen<input name="quantity" type="number" min="1" max="100" value="1"></label>
     </div>
+    <label>Preis pro kg (optional)<input name="cost_per_kg" type="number" min="0" step="0.01" inputmode="decimal"></label>
     <label>Lagerplatz<select name="location"></select></label>
     <div id="dupHint" class="dupHint hidden"></div>
     <p id="newError" class="error"></p>
@@ -134,10 +136,37 @@
       <label>Gewicht pro Rolle (g)<input name="label_weight" type="number" min="100" step="50"></label>
       <label>Lagerplatz (Rollen im Lager)<select name="location"></select></label>
     </div>
+    <div class="row">
+      <label>Leergewicht Spule (g)<input name="core_weight" type="number" min="0" step="1"></label>
+      <label>Preis pro kg<input name="cost_per_kg" type="number" min="0" step="0.01" inputmode="decimal" placeholder="leer = kein Preis"></label>
+    </div>
     <p id="editError" class="error"></p>
     <div class="actions">
       <button value="cancel" formnovalidate>Abbrechen</button>
       <button value="ok" class="primary">Speichern</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="rollDialog" class="wide">
+  <form method="dialog">
+    <h2 id="rollTitle" class="rollTitle"></h2>
+    <p class="muted">Jede Rolle einzeln. Das Restgewicht kannst du direkt eintragen oder die Rolle mit Spule wiegen, dann zieht die App das Leergewicht ab.</p>
+    <div id="rollList" class="rollList"></div>
+    <div class="actions"><button value="cancel">Schließen</button></div>
+  </form>
+</dialog>
+
+<dialog id="loadDialog">
+  <form id="loadForm" method="dialog">
+    <h2>In Drucker einlegen</h2>
+    <p class="muted">Bambuddy zieht den Verbrauch nur von Rollen ab, die einem Platz zugeordnet sind. Rollen mit Chip ordnet Bambuddy selbst zu.</p>
+    <label>Rolle<select name="roll"></select></label>
+    <label>Platz im Drucker<select name="slot"></select></label>
+    <p id="loadError" class="error"></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Abbrechen</button>
+      <button value="ok" class="primary">Einlegen</button>
     </div>
   </form>
 </dialog>

@@ -147,7 +147,7 @@ def current_user(headers):
 
 def required_level(method, path):
     # Seite, Skripte und Icon darf jeder laden, damit „Kein Zugriff“ angezeigt werden kann.
-    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users"))):
+    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/printers"))):
         return NONE
     if path.startswith("/users"):
         return ADMIN
@@ -160,6 +160,9 @@ def required_level(method, path):
         if method == "POST" and rel in ("spools", "spools/bulk"):
             return ADD
         if rel.startswith("shopping-list"):
+            return ADD
+        # Rolle in den Drucker einlegen oder herausnehmen gehört zum täglichen Erfassen.
+        if rel.startswith("assignments") and method in ("POST", "DELETE"):
             return ADD
     return EDIT
 
@@ -217,6 +220,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.status()
             if path == "/reconcile":
                 return self.reconcile()
+            if path == "/printers":
+                return self.send(200, printer_slots())
             if path == "/brands":
                 # Mit Hinweis, ob ein Logo hochgeladen ist, damit die Seite nicht ins Leere fragt.
                 brands = load_brands()
@@ -442,6 +447,66 @@ def bambuddy(method, rel, payload=None):
     with urllib.request.urlopen(req, timeout=15) as resp:
         raw = resp.read()
     return json.loads(raw) if raw else None
+
+
+def no_chip(value):
+    # Rollen ohne Chip melden lauter Nullen statt einer Kennung.
+    return not value or not value.strip("0")
+
+
+def slot_name(ams_id, tray_id, units):
+    if ams_id == 255:
+        return "Externe Spule" if units <= 1 else f"Externe Spule {tray_id + 1}"
+    if ams_id >= 128:
+        return f"AMS HT {ams_id - 127}"
+    return f"AMS {chr(65 + ams_id)} · Slot {tray_id + 1}"
+
+
+def slot_entry(printer, ams_id, tray_id, tray, name):
+    present = tray.get("exists")
+    if present is None:
+        present = tray.get("state") in (10, 11) or bool(tray.get("tray_type"))
+    return {
+        "printer_id": printer["id"], "printer": printer.get("name") or f"Drucker {printer['id']}",
+        "ams_id": ams_id, "tray_id": tray_id, "name": name,
+        "present": bool(present), "chip": not (no_chip(tray.get("tag_uid")) and no_chip(tray.get("tray_uuid"))),
+        "type": tray.get("tray_sub_brands") or tray.get("tray_type") or "", "rgba": tray.get("tray_color") or "",
+    }
+
+
+def printer_slots():
+    """Alle AMS-Plätze und externen Halter der Drucker, mit Angabe, ob eine Rolle drinsteckt."""
+    try:
+        printers = bambuddy("GET", "printers/") or []
+    except (urllib.error.URLError, OSError, ValueError):
+        return {"printers": [], "currency": ""}
+    try:
+        currency = (bambuddy("GET", "settings/") or {}).get("currency") or ""
+    except (urllib.error.URLError, OSError, ValueError):
+        currency = ""
+    result = []
+    for p in printers:
+        if not isinstance(p, dict) or "id" not in p:
+            continue
+        entry = {"id": p["id"], "name": p.get("name") or f"Drucker {p['id']}", "connected": False, "slots": []}
+        try:
+            st = bambuddy("GET", f"printers/{p['id']}/status") or {}
+        except (urllib.error.URLError, OSError, ValueError):
+            st = {}
+        entry["connected"] = bool(st.get("connected"))
+        for unit in st.get("ams") or []:
+            uid = int(unit.get("id", 0))
+            for tray in unit.get("tray") or []:
+                tid = int(tray.get("id", 0))
+                entry["slots"].append(slot_entry(p, uid, tid, tray, slot_name(uid, tid, 0)))
+        ext = st.get("vt_tray") or []
+        for tray in ext:
+            tid = max(0, int(tray.get("id", 254)) - 254)
+            entry["slots"].append(slot_entry(p, 255, tid, tray, slot_name(255, tid, len(ext))))
+        if not ext:
+            entry["slots"].append(slot_entry(p, 255, 0, {"exists": False}, slot_name(255, 0, 1)))
+        result.append(entry)
+    return {"printers": result, "currency": currency}
 
 
 def describe(s):

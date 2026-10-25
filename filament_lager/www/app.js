@@ -75,6 +75,35 @@ function remaining(s) {
   return Math.max(0, (s.label_weight || 0) - (s.weight_used || 0));
 }
 
+function rollValue(s) {
+  return s.cost_per_kg ? remaining(s) / 1000 * s.cost_per_kg : 0;
+}
+
+function money(v) {
+  const cur = state.currency || "";
+  try {
+    if (/^[A-Z]{3}$/.test(cur)) return new Intl.NumberFormat("de-CH", { style: "currency", currency: cur }).format(v);
+  } catch { /* unbekannte Währung */ }
+  return v.toFixed(2).replace(".", ",") + (cur ? " " + cur : "");
+}
+
+const hasChip = (s) => !!(s.tag_uid || s.tray_uuid);
+
+// Name eines Platzes wie im Server: „AMS A · Slot 2“, „AMS HT 1“ oder „Externe Spule“.
+function slotName(ams, tray) {
+  if (ams === 255) return "Externe Spule" + (tray ? " " + (tray + 1) : "");
+  if (ams >= 128) return "AMS HT " + (ams - 127);
+  return `AMS ${String.fromCharCode(65 + ams)} · Slot ${tray + 1}`;
+}
+
+function slotLabel(a) {
+  const printers = state.printers || [];
+  const printer = printers.find((p) => p.id === a.printer_id);
+  const name = (state.printers || []).length > 1 ? (printer?.name || a.printer_name || "") + " · " : "";
+  const slot = printer?.slots.find((x) => x.ams_id === a.ams_id && x.tray_id === a.tray_id);
+  return name + (a.ams_label && a.ams_id !== 255 ? `${a.ams_label} · Slot ${a.tray_id + 1}` : slot?.name || slotName(a.ams_id, a.tray_id));
+}
+
 function spoolPlace(s) {
   if (state.inPrinter?.has(s.id)) return "";
   return (s.location_id && state.locations?.get(s.location_id)) || s.storage_location || "";
@@ -115,6 +144,8 @@ function buildGroups() {
     g.full = g.spools.filter((s) => (s.weight_used || 0) < 1).length;
     g.opened = g.spools.filter((s) => (s.weight_used || 0) >= 1 && remaining(s) > 0).length;
     g.places = [...new Set(g.spools.map(spoolPlace).filter(Boolean))];
+    g.value = g.spools.reduce((n, s) => n + rollValue(s), 0);
+    g.slots = g.spools.filter((s) => state.slotOf?.has(s.id)).map((s) => slotLabel(state.slotOf.get(s.id)));
     g.lastUsed = g.spools.map((s) => s.last_used || state.lastUse?.get(s.id) || "").sort().pop() || "";
     const threshold = g.template.low_stock_threshold_pct;
     g.empty = g.remaining <= 0;
@@ -153,19 +184,30 @@ async function load(quiet) {
   }
   if (!can(VIEW)) return;
   try {
-    const [spools, shop, rec, slots, brands, locations, usage] = await Promise.all([api("api/inventory/spools"),
+    const [spools, shop, rec, slots, brands, locations, usage, printers] = await Promise.all([api("api/inventory/spools"),
       api("api/inventory/shopping-list"), api("reconcile").catch(() => null), api("api/inventory/assignments").catch(() => []),
       api("brands").catch(() => ({})), api("api/inventory/locations").catch(() => []),
-      api("api/inventory/usage?limit=500").catch(() => [])]);
+      api("api/inventory/usage?limit=500").catch(() => []), api("printers").catch(() => null)]);
     state.brands = brands;
     state.locations = new Map((Array.isArray(locations) ? locations : []).map((l) => [l.id, l.name]));
     state.locationList = Array.isArray(locations) ? locations : [];
     // Letzte Nutzung je Rolle aus dem Verbrauchsverlauf, falls Bambuddy last_used nicht setzt.
     state.lastUse = new Map();
+    state.usage = new Map();
     for (const u of Array.isArray(usage) ? usage : []) {
       if (!state.lastUse.has(u.spool_id) || state.lastUse.get(u.spool_id) < u.created_at) state.lastUse.set(u.spool_id, u.created_at);
+      if (!state.usage.has(u.spool_id)) state.usage.set(u.spool_id, []);
+      state.usage.get(u.spool_id).push(u);
     }
-    state.inPrinter = new Set((Array.isArray(slots) ? slots : []).map((a) => a.spool_id));
+    for (const list of state.usage.values()) list.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    state.assignments = Array.isArray(slots) ? slots : [];
+    state.slotOf = new Map(state.assignments.map((a) => [a.spool_id, a]));
+    state.inPrinter = new Set(state.assignments.map((a) => a.spool_id));
+    // Druckerliste nur ersetzen, wenn sie geladen werden konnte, sonst bleibt die letzte bekannte.
+    if (printers && Array.isArray(printers.printers)) {
+      state.printers = printers.printers;
+      state.currency = printers.currency || state.currency || "";
+    }
     state.spools = (Array.isArray(spools) ? spools : []).filter((s) => !s.archived_at);
     state.shop = Array.isArray(shop) ? shop : [];
     state.reconcile = rec || { merged: [], unclear: [] };
@@ -274,6 +316,8 @@ function renderChipBox() {
 
 function render() {
   renderChipBox();
+  renderSlotBox();
+  if ($("#rollDialog").open && rollGroupKey) renderRolls();
   renderChips();
   renderStock();
   renderShop();
@@ -405,6 +449,7 @@ function renderStock() {
     <div class="stat"><b>${state.groups.reduce((n, g) => n + g.opened, 0)}</b><span class="muted">angebrochen</span></div>
     <div class="stat"><b>${kg(grams)}</b><span class="muted">Filament übrig</span></div>
     <div class="stat"><b>${state.groups.length}</b><span class="muted">Sorten</span></div>
+    ${state.groups.some((g) => g.value) ? `<div class="stat"><b>${money(state.groups.reduce((n, g) => n + g.value, 0))}</b><span class="muted">Lagerwert</span></div>` : ""}
     <div class="stat ${low ? "low" : ""}"><b>${low}</b><span class="muted">knapp</span></div>`;
 
   if (!groups.length) {
@@ -442,12 +487,16 @@ function tileHtml(g) {
     <div class="tileMeta">
       ${g.opened ? `<span>◔ ${g.opened} angebrochen</span>` : ""}
       ${g.places.length ? `<span>📍 ${esc(g.places.join(", "))}</span>` : `<span class="muted">📍 ${g.shelf ? "kein Lagerplatz" : "alle im Drucker"}</span>`}
+      ${g.slots.length ? `<span>🖨 ${esc(g.slots.join(", "))}</span>` : ""}
+      ${g.value ? `<span>💰 ${money(g.value)} Wert</span>` : ""}
       <span>🕓 ${g.lastUsed ? "zuletzt " + fmtDate(g.lastUsed) : "noch nie verwendet"}</span>
     </div>
     <div class="tileActions">
       <button class="minus need-edit" data-act="minus" data-key="${esc(g.key)}" title="Eine Rolle ausbuchen"${g.shelf ? "" : " disabled"}>−</button>
-      <button class="need-add" data-act="plus" data-key="${esc(g.key)}" title="Eine volle Rolle dazubuchen">+1 Rolle</button>
+      <button class="need-add" data-act="plus" data-key="${esc(g.key)}" title="Eine volle Rolle dazubuchen">+1</button>
       <button class="need-add" data-act="cart" data-key="${esc(g.key)}" title="Auf die Einkaufsliste">${cart ? `🛒 <span class="badge cart">${cart.quantity_spools}</span>` : "🛒"}</button>
+      <button class="need-add" data-act="load" data-key="${esc(g.key)}" title="Rolle in den Drucker einlegen"${g.shelf ? "" : " disabled"}>🖨</button>
+      <button data-act="rolls" data-key="${esc(g.key)}" title="Rollen einzeln ansehen, Restgewicht und Verbrauch">☰</button>
     </div></div>`;
 }
 
@@ -635,6 +684,8 @@ document.addEventListener("click", (ev) => {
   if (act === "plus" && g) run(() => plusOne(g));
   else if (act === "minus" && g) run(() => minusOne(g));
   else if (act === "cart" && g) run(() => addToCart(g));
+  else if (act === "load" && g) { btn.disabled = false; openLoad({ group: g }); }
+  else if (act === "rolls" && g) { btn.disabled = false; openRolls(g); }
   else if (act === "brand") { btn.disabled = false; if (can(EDIT)) openBrand(btn.dataset.brand); }
   else if (act === "level") btn.disabled = false;
   else if (act === "resolve") {
@@ -699,6 +750,7 @@ function readNewForm() {
     rgba: $("#newForm").color.dataset.touched === "1" ? f.get("color").slice(1).toUpperCase() + "FF" : null,
     label_weight: parseInt(f.get("label_weight"), 10) || 1000,
     weight_used: 0,
+    ...(f.get("cost_per_kg") ? { cost_per_kg: Math.max(0, parseFloat(String(f.get("cost_per_kg")).replace(",", ".")) || 0) } : {}),
     ...chosenLocation(),
   };
 }
@@ -823,6 +875,8 @@ function openEdit(g) {
   f.color.dataset.touched = g.mixedColors ? "1" : "";
   f.hex.value = g.rgba ? "#" + g.rgba.slice(0, 6).toUpperCase() : "";
   f.label_weight.value = t.label_weight || 1000;
+  f.core_weight.value = t.core_weight ?? 250;
+  f.cost_per_kg.value = t.cost_per_kg ?? "";
   const missing = missingFields(g);
   $("#editInfo").textContent = (g.spools.length === 1 ? "Gilt für die eine Rolle dieser Sorte." : `Gilt für alle ${g.spools.length} Rollen dieser Sorte.`) + (missing.length ? ` Es fehlt: ${missing.join(", ")}.` : "");
   $("#editError").textContent = "";
@@ -842,9 +896,11 @@ $("#editForm").addEventListener("submit", async (ev) => {
     subtype: canonical(f.subtype.value, "subtype") || null,
     color_name: canonical(f.color_name.value, "color_name") || null,
     label_weight: parseInt(f.label_weight.value, 10) || t.label_weight || 1000,
+    core_weight: f.core_weight.value === "" ? t.core_weight ?? 250 : Math.max(0, parseInt(f.core_weight.value, 10) || 0),
+    cost_per_kg: f.cost_per_kg.value === "" ? null : Math.max(0, parseFloat(f.cost_per_kg.value.replace(",", ".")) || 0),
   };
   if (f.color.dataset.touched === "1") next.rgba = f.color.value.slice(1).toUpperCase() + "FF";
-  const labels = { brand: "Hersteller", material: "Material", subtype: "Typ", color_name: "Farbname", label_weight: "Gewicht", rgba: "Farbe" };
+  const labels = { brand: "Hersteller", material: "Material", subtype: "Typ", color_name: "Farbname", label_weight: "Gewicht", rgba: "Farbe", core_weight: "Leergewicht Spule", cost_per_kg: "Preis pro kg" };
   const changes = Object.keys(next).filter((k) => k === "rgba"
     ? editGroup.mixedColors || (editGroup.rgba || "").slice(0, 6).toUpperCase() !== next.rgba.slice(0, 6)
     : (next[k] ?? "") !== (t[k] ?? ""));
@@ -869,6 +925,218 @@ $("#editForm").addEventListener("submit", async (ev) => {
     await load(true);
   } catch (e) {
     $("#editError").textContent = "Konnte nicht speichern: " + e.message;
+  }
+});
+
+// ---------- Drucker: Rollen einlegen, herausnehmen, nicht zugeordnete Plätze ----------
+
+function allSlots() {
+  return (state.printers || []).flatMap((p) => p.slots.map((x) => ({ ...x, printerName: p.name, connected: p.connected })));
+}
+
+function assignmentAt(slot) {
+  return (state.assignments || []).find((a) => a.printer_id === slot.printer_id && a.ams_id === slot.ams_id && a.tray_id === slot.tray_id);
+}
+
+function fullSlotLabel(slot) {
+  return ((state.printers || []).length > 1 ? slot.printerName + " · " : "") + slot.name;
+}
+
+function rollName(s) {
+  return [s.brand, s.material, s.subtype, s.color_name].filter(Boolean).join(" ");
+}
+
+function dot(rgba, size = 22) {
+  const ok = /^[0-9a-f]{6}/i.test(rgba || "");
+  return `<span class="swatch" style="width:${size}px;height:${size}px;background:${ok ? "#" + rgba.slice(0, 6) : "#999"}"></span>`;
+}
+
+function unassignedSlots() {
+  // Belegt, ohne Chip und keiner Lager-Rolle zugeordnet: hier zieht Bambuddy keinen Verbrauch ab.
+  return allSlots().filter((x) => x.connected && x.present && !x.chip && !assignmentAt(x));
+}
+
+function renderSlotBox() {
+  const open = unassignedSlots();
+  const box = $("#slotBox");
+  if (!open.length || !can(VIEW)) return box.classList.add("hidden");
+  box.innerHTML = `<h3>Rolle im Drucker ohne Zuordnung</h3>
+    <p class="muted">Ohne Zuordnung wird der Verbrauch dieser Rollen nicht vom Lager abgezogen.</p>` +
+    open.map((x) => `<div class="chipRow unclear">${dot(x.rgba)}<span><b>${esc(fullSlotLabel(x))}</b>${x.type ? " · " + esc(x.type) : ""}</span>
+      <button class="primary need-add" data-act="assignSlot" data-slot="${x.printer_id}:${x.ams_id}:${x.tray_id}">Lager-Rolle zuordnen</button></div>`).join("");
+  box.classList.remove("hidden");
+}
+
+let loadCtx = null;
+
+function slotByKey(key) {
+  return allSlots().find((x) => `${x.printer_id}:${x.ams_id}:${x.tray_id}` === key);
+}
+
+function slotOption(x) {
+  const a = assignmentAt(x);
+  const now = a ? `jetzt: ${rollName(a.spool || state.spools.find((s) => s.id === a.spool_id) || {})}` : x.present ? `belegt${x.chip ? " (Chip-Rolle)" : ""}${x.type ? ", " + x.type : ""}` : "leer";
+  return `<option value="${x.printer_id}:${x.ams_id}:${x.tray_id}">${esc(fullSlotLabel(x))} (${esc(now)})${x.connected ? "" : " · offline"}</option>`;
+}
+
+function rollOption(s) {
+  const where = state.slotOf?.has(s.id) ? " · im Drucker" : "";
+  return `<option value="${s.id}">${esc(rollName(s))} · ${kg(remaining(s))}${(s.weight_used || 0) >= 1 ? " (angebrochen)" : ""}${hasChip(s) ? " · Chip" : ""}${where}</option>`;
+}
+
+function preferredRoll(list) {
+  // Zuerst angebrochene Rollen aus dem Regal, dann volle; Chip-Rollen zuletzt, die ordnet Bambuddy selbst zu.
+  const score = (s) => (state.inPrinter?.has(s.id) ? 4 : 0) + (hasChip(s) ? 2 : 0) + ((s.weight_used || 0) >= 1 ? 0 : 1);
+  return [...list].sort((a, b) => score(a) - score(b) || a.id - b.id);
+}
+
+function openLoad({ group, spool, slot }) {
+  const slots = allSlots();
+  if (!slots.length) return toast("Keine Drucker in Bambuddy gefunden");
+  let rolls;
+  if (slot) {
+    // Passende Rollen zuerst: gleiches Material, ähnliche Farbe.
+    const type = norm(slot.type);
+    const fit = (s) => (type && (type.includes(norm(s.material)) ? 0 : 200)) + hexDistance(s.rgba, slot.rgba);
+    rolls = state.spools.filter((s) => !state.inPrinter?.has(s.id)).sort((a, b) => fit(a) - fit(b));
+  } else {
+    rolls = preferredRoll(spool ? [spool] : group.spools.filter((s) => !state.inPrinter?.has(s.id)));
+  }
+  if (!rolls.length) return toast("Keine Rolle im Lager zum Einlegen");
+  loadCtx = { slot };
+  const f = $("#loadForm");
+  f.roll.innerHTML = rolls.map(rollOption).join("");
+  // Freie Plätze zuerst anbieten.
+  const order = (x) => (assignmentAt(x) ? 2 : x.present ? 1 : 0);
+  f.slot.innerHTML = [...slots].sort((a, b) => order(a) - order(b)).map(slotOption).join("");
+  if (slot) f.slot.value = `${slot.printer_id}:${slot.ams_id}:${slot.tray_id}`;
+  f.roll.disabled = rolls.length === 1;
+  $("#loadError").textContent = "";
+  $("#loadDialog").showModal();
+}
+
+async function assignRoll(spool, slot) {
+  const old = state.slotOf?.get(spool.id);
+  if (old) await api(`api/inventory/assignments/${old.printer_id}/${old.ams_id}/${old.tray_id}`, { method: "DELETE" });
+  await api("api/inventory/assignments", { method: "POST", body: JSON.stringify({ spool_id: spool.id, printer_id: slot.printer_id, ams_id: slot.ams_id, tray_id: slot.tray_id }) });
+}
+
+$("#loadForm").addEventListener("submit", async (ev) => {
+  if (ev.submitter?.value !== "ok") return;
+  ev.preventDefault();
+  const f = ev.target;
+  const spool = state.spools.find((s) => String(s.id) === f.roll.value);
+  const slot = slotByKey(f.slot.value);
+  if (!spool || !slot) return;
+  const current = assignmentAt(slot);
+  const replaced = current && current.spool_id !== spool.id
+    ? ` Dort ist bisher <b>${esc(rollName(current.spool || state.spools.find((s) => s.id === current.spool_id) || {}))}</b> eingetragen, diese Rolle kommt zurück ins Lager.` : "";
+  const ok = await askConfirm("Einlegen bestätigen", `<div class="confirmLine">${dot(spool.rgba, 32)}<span><b>${esc(rollName(spool))}</b> · ${kg(remaining(spool))}</span></div>
+    <p class="confirmNote">Die Rolle wird <b>${esc(fullSlotLabel(slot))}</b> zugeordnet. Ab jetzt zieht Bambuddy den Verbrauch jedes Drucks von dieser Rolle ab und stellt Material und Farbe am Drucker ein.${replaced}</p>`, "Einlegen");
+  if (!ok) return;
+  try {
+    await assignRoll(spool, slot);
+    $("#loadDialog").close();
+    toast(`${spool.color_name || spool.material} in ${slot.name} eingelegt`);
+    await load(true);
+  } catch (e) {
+    $("#loadError").textContent = "Konnte nicht zuordnen: " + e.message;
+  }
+});
+
+async function unloadRoll(spool) {
+  const a = state.slotOf?.get(spool.id);
+  if (!a) return;
+  const ok = await askConfirm("Herausnehmen bestätigen", `<div class="confirmLine">${dot(spool.rgba, 32)}<span><b>${esc(rollName(spool))}</b> · ${kg(remaining(spool))}</span></div>
+    <p class="confirmNote">Die Rolle wird von <b>${esc(slotLabel(a))}</b> gelöst und zählt wieder als „im Lager“. Ihr Restgewicht bleibt erhalten.</p>`, "Herausnehmen");
+  if (!ok) return;
+  await api(`api/inventory/assignments/${a.printer_id}/${a.ams_id}/${a.tray_id}`, { method: "DELETE" });
+  toast(`${spool.color_name || spool.material} herausgenommen`);
+}
+
+// ---------- Rollen einzeln: Restgewicht, Verbrauch, Platz ----------
+
+let rollGroupKey = null;
+
+function openRolls(g) {
+  rollGroupKey = g.key;
+  renderRolls();
+  $("#rollDialog").showModal();
+}
+
+function rollCard(s) {
+  const a = state.slotOf?.get(s.id);
+  const where = a ? `🖨 ${esc(slotLabel(a))}` : `📍 ${esc(spoolPlace(s) || "im Lager, kein Lagerplatz")}`;
+  const pct = s.label_weight ? Math.round(remaining(s) / s.label_weight * 100) : 0;
+  const usage = (state.usage?.get(s.id) || []).slice(0, 5);
+  const core = s.core_weight ?? 250;
+  return `<div class="rollCard" data-roll="${s.id}">
+    <div class="rollHead"><b>Rolle ${s.id}</b><span class="muted">${where}</span>${hasChip(s) ? `<span class="levelTag small">Chip</span>` : ""}</div>
+    <div class="bar"><span style="width:${pct}%"></span></div>
+    <div class="tileInfo"><span>Rest <b>${kg(remaining(s))}</b> von ${kg(s.label_weight || 0)}</span><span>${s.cost_per_kg ? money(rollValue(s)) : ""}</span></div>
+    <div class="rollEdit need-edit">
+      <label>Restgewicht (g)<input type="number" min="0" step="1" data-rest="${s.id}" value="${Math.round(remaining(s))}"></label>
+      <label>oder gewogen mit Spule (g)<input type="number" min="0" step="1" data-gross="${s.id}" placeholder="Spule ${core} g"></label>
+      <button type="button" class="primary" data-act="saveWeight" data-roll="${s.id}">Speichern</button>
+    </div>
+    <div class="rollActions need-add">${a
+      ? `<button type="button" data-act="unload" data-roll="${s.id}">Aus dem Drucker nehmen</button>`
+      : `<button type="button" data-act="loadRoll" data-roll="${s.id}">In Drucker einlegen</button>`}</div>
+    <div class="usage">${usage.length ? `<div class="muted">Letzte Drucke</div>` + usage.map((u) => `<div class="usageRow"><span>${fmtDate(u.created_at)}</span>
+      <span class="grow">${esc(u.print_name || "Druck")}${u.status && u.status !== "completed" ? ` <span class="missing">(${u.status === "failed" ? "abgebrochen" : esc(u.status)})</span>` : ""}</span>
+      <b>${Math.round(u.weight_used)} g</b>${u.cost ? `<span class="muted">${money(u.cost)}</span>` : ""}</div>`).join("")
+      : `<div class="muted">Noch kein Verbrauch erfasst.</div>`}</div>
+  </div>`;
+}
+
+function renderRolls() {
+  const g = state.groups.find((x) => x.key === rollGroupKey);
+  if (!g) return $("#rollDialog").close();
+  // Eingaben, die gerade getippt werden, nicht beim Auffrischen überschreiben.
+  if ($("#rollList").contains(document.activeElement) && document.activeElement.tagName === "INPUT") return;
+  $("#rollTitle").innerHTML = `${dot(g.rgba, 28)} ${esc(g.color_name || "Ohne Farbname")} <span class="muted">${esc([g.brand, g.material, g.subtype].filter(Boolean).join(" "))}</span>`;
+  const list = [...g.spools].sort((a, b) => (state.inPrinter.has(b.id) - state.inPrinter.has(a.id)) || (b.weight_used || 0) - (a.weight_used || 0));
+  $("#rollList").innerHTML = list.map(rollCard).join("");
+}
+
+$("#rollList").addEventListener("input", (ev) => {
+  // Bruttogewicht von der Waage: Leergewicht der Spule abziehen und als Rest anzeigen.
+  const id = ev.target.dataset.gross;
+  if (!id) return;
+  const s = state.spools.find((x) => String(x.id) === id);
+  const gross = parseInt(ev.target.value, 10);
+  if (s && gross >= 0) $(`input[data-rest="${id}"]`).value = Math.max(0, gross - (s.core_weight ?? 250));
+});
+
+async function saveWeight(s) {
+  const rest = parseInt($(`input[data-rest="${s.id}"]`).value, 10);
+  if (!(rest >= 0)) return toast("Bitte ein Restgewicht eingeben");
+  const label = s.label_weight || 1000;
+  const update = { weight_used: Math.max(0, label - rest) };
+  let note = "";
+  if (rest > label) {
+    update.label_weight = rest;
+    update.weight_used = 0;
+    note = ` Das ist mehr als das Rollengewicht, deshalb wird das Rollengewicht dieser Rolle auf ${kg(rest)} gesetzt.`;
+  }
+  const ok = await askConfirm("Restgewicht ändern", `<div class="confirmLine">${dot(s.rgba, 32)}<span><b>${esc(rollName(s))}</b> · Rolle ${s.id}</span></div>
+    <p class="confirmNote">Rest: <s>${kg(remaining(s))}</s> → <b>${kg(rest)}</b>.${note} Bambuddy gleicht diese Rolle danach nicht mehr mit der AMS-Anzeige ab, der Verbrauch aus Drucken wird weiter abgezogen.</p>`, "Speichern");
+  if (!ok) return;
+  await api(`api/inventory/spools/${s.id}`, { method: "PATCH", body: JSON.stringify(update) });
+  toast(`Restgewicht ${kg(rest)} gespeichert`);
+}
+
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button[data-act]");
+  if (!btn) return;
+  const act = btn.dataset.act;
+  const s = btn.dataset.roll && state.spools.find((x) => String(x.id) === btn.dataset.roll);
+  if (act === "saveWeight" && s) run(() => saveWeight(s));
+  else if (act === "unload" && s) run(() => unloadRoll(s));
+  else if (act === "loadRoll" && s) openLoad({ spool: s });
+  else if (act === "assignSlot") {
+    const slot = slotByKey(btn.dataset.slot);
+    if (slot) openLoad({ slot });
   }
 });
 

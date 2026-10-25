@@ -25,6 +25,9 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 - **Schnell erfassen**: „+1 Rolle“ bei jeder Sorte oder „Neues Material“ mit Hersteller, Material, Typ, Farbe (auch als Hex-Code), Gewicht, Anzahl und Lagerplatz.
 - **Keine Doppelten**: Schreibweisen werden vereinheitlicht („bambu lab“ wird „Bambu Lab“), und gibt es eine Sorte schon, schlägt die App vor, die Rollen dort dazuzubuchen.
 - **Einkaufsliste**: Warenkorb-Knopf an jeder Sorte, Status „zu kaufen“, „bestellt“, „eingetroffen“. Beim Eintreffen werden die Rollen direkt ins Lager gebucht. Neben jedem Eintrag steht der aktuelle Lagerbestand.
+- **Rollen im Drucker**: „🖨“ legt eine Rolle in einen AMS-Platz oder auf die externe Spule. So zieht Bambuddy auch bei Rollen ohne Chip den Verbrauch jedes Drucks ab. Steckt eine Rolle ohne Zuordnung im Drucker, zeigt die App oben einen Hinweis mit „Lager-Rolle zuordnen“. Auf jeder Kachel steht, in welchem Platz die Rollen stecken.
+- **Rollen einzeln**: „☰“ zeigt jede Rolle mit Restgewicht, Platz, Wert und den letzten Drucken samt Verbrauch. Das Restgewicht lässt sich direkt eintragen oder aus dem Gewicht auf der Waage berechnen (das Leergewicht der Spule wird abgezogen).
+- **Preise**: Preis pro kg je Sorte, daraus Wert pro Rolle und Lagerwert.
 - **RFID-Abgleich**: Steckst du eine Bambu-Rolle mit Chip ins AMS, die du vorher schon im Lager erfasst hast, ordnet die App den Chip dieser Lager-Rolle zu. Nichts wird doppelt gezählt.
 - **Bearbeiten und Ausbuchen**: fehlende Angaben nachtragen, Farben korrigieren, eine zu viel erfasste Rolle wieder ausbuchen (wird in Bambuddy archiviert, nicht gelöscht).
 - **Bestätigung**: jedes Ein- und Ausbuchen von Hand fragt vorher nach.
@@ -50,6 +53,10 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 |---|---|
 | ![Bestätigen](images/bestaetigen.png) | ![Filter](images/filter.png) |
 
+| Rolle in den Drucker einlegen | Rollen einzeln mit Restgewicht und Verbrauch |
+|---|---|
+| ![Einlegen](images/einlegen.png) | ![Rollen](images/rollen.png) |
+
 | Benutzer | Auf dem Handy |
 |---|---|
 | ![Benutzer](images/benutzer.png) | <img src="images/handy.png" width="260" alt="Handy"> |
@@ -58,7 +65,7 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 
 - Home Assistant OS oder Supervised (also mit App-Store, früher „Add-ons“)
 - [Bambuddy](https://github.com/maziggy/bambuddy), zum Beispiel als Home-Assistant-App, mit eingeschalteter Anmeldung
-- Ein API-Schlüssel aus Bambuddy mit dem Recht **Inventar verwalten**
+- Ein API-Schlüssel aus Bambuddy mit den Rechten **Inventar verwalten** und **Status lesen** (ist standardmäßig an)
 
 ## Installation
 
@@ -111,6 +118,16 @@ Damit der Bestand stimmt, so vorgehen:
 
 In Bambuddy muss dafür „Unbekannte RFID-Spulen automatisch hinzufügen“ eingeschaltet sein. Passt ein Chip zu mehreren Sorten, fragt die App oben unter „Vom Drucker erkannt“ nach.
 
+## Rollen ohne Chip
+
+Bambuddy zieht den Verbrauch nach jedem Druck von der Rolle ab, die dem benutzten AMS-Platz zugeordnet ist, auch wenn der Druck direkt aus Bambu Studio gestartet wurde. Rollen mit Chip ordnet Bambuddy selbst zu, Rollen ohne Chip musst du zuordnen:
+
+1. Rolle ins AMS stecken.
+2. In Filament-Lager bei der Sorte auf **🖨** tippen (oder im Hinweis „Rolle im Drucker ohne Zuordnung“ auf **Lager-Rolle zuordnen**), Rolle und Platz wählen, **Einlegen**.
+3. Kommt die Rolle wieder raus: **☰** → **Aus dem Drucker nehmen**. Das Restgewicht bleibt erhalten.
+
+Hast du eine angebrochene Rolle gewogen, trägst du das Gewicht unter **☰** ein. Danach gleicht Bambuddy diese Rolle nicht mehr mit der Prozentanzeige des AMS ab, zieht den Verbrauch aus Drucken aber weiter ab.
+
 ## Häufige Fragen
 
 **„Noch kein API-Schlüssel eingetragen“ oder „Bambuddy lehnt den Schlüssel ab“**
@@ -123,7 +140,7 @@ Läuft Bambuddy? Stimmt die Bambuddy-Adresse in der Konfiguration?
 Sie stehen nicht unter „Benutzer und Rechte“ und das Standard-Recht ist `kein`. Eintragen oder Standard-Recht ändern.
 
 **Ändert die App etwas an meinen Druckern?**
-Nur beim RFID-Abgleich: Die Lager-Rolle übernimmt den AMS-Platz der doppelten Chip-Rolle. Sonst liest und schreibt die App ausschließlich das Bambuddy-Inventar.
+Nur wenn du eine Rolle einlegst und beim RFID-Abgleich: Bambuddy stellt dann Material und Farbe des AMS-Platzes passend zur Rolle ein. Sonst liest die App von den Druckern nur, welche Plätze belegt sind.
 
 ## Datenschutz
 

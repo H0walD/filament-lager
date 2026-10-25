@@ -17,8 +17,8 @@
 |---|---|
 | `kein` | nichts |
 | `ansehen` | alles ansehen |
-| `erfassen` | Rollen einbuchen, Einkaufsliste pflegen |
-| `bearbeiten` | zusätzlich Sorten ändern, ausbuchen, Hersteller-Webseiten pflegen |
+| `erfassen` | Rollen einbuchen, in den Drucker einlegen und herausnehmen, Einkaufsliste pflegen |
+| `bearbeiten` | zusätzlich Sorten ändern, Restgewicht und Preise ändern, ausbuchen, Hersteller-Webseiten pflegen |
 | `admin` | zusätzlich Logos hochladen und Übersicht „Benutzer“ |
 
 Wer nicht unter **Benutzer und Rechte** steht, bekommt das **Standard-Recht**. Änderungen gelten sofort.
@@ -26,6 +26,10 @@ Wer nicht unter **Benutzer und Rechte** steht, bekommt das **Standard-Recht**. �
 ## RFID-Rollen
 
 Neue Rollen zuerst in Filament-Lager erfassen, dann ins AMS stecken. Die App ordnet den Chip innerhalb einer Minute der Lager-Rolle zu, damit nichts doppelt gezählt wird. In Bambuddy muss „Unbekannte RFID-Spulen automatisch hinzufügen“ eingeschaltet sein.
+
+## Rollen ohne Chip
+
+Damit Bambuddy den Verbrauch abzieht, muss die Rolle einem AMS-Platz zugeordnet sein. Dafür bei der Sorte auf „🖨“ tippen. Steckt eine Rolle ohne Zuordnung im Drucker, zeigt die App oben einen Hinweis. Der API-Schlüssel braucht dafür zusätzlich das Recht „Status lesen“ (in Bambuddy standardmäßig an).
 
 ## Hilfe
 

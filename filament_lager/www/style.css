@@ -201,3 +201,21 @@ section.blocked { display: none !important; }
   .row { flex-direction: column; }
   label.narrow { flex: 1; }
 }
+dialog.wide { width: min(620px, 96vw); }
+.rollTitle { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rollTitle .muted { font-size: 14px; font-weight: 400; }
+.rollList { display: flex; flex-direction: column; gap: 10px; max-height: 65vh; overflow: auto; }
+.rollCard { border: 1px solid var(--border); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.rollHead { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.levelTag.small { font-size: 11px; padding: 1px 6px; }
+.rollEdit { display: flex; gap: 8px; align-items: flex-end; }
+.rollEdit button { flex: none; }
+.rollActions button { font-size: 13px; }
+.usage { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.usageRow { display: flex; gap: 8px; align-items: baseline; }
+.usageRow .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tileActions button[disabled] { opacity: 0.45; cursor: default; }
+@media (max-width: 520px) {
+  .rollEdit { flex-direction: column; align-items: stretch; }
+  .tileActions { flex-wrap: wrap; }
+}
