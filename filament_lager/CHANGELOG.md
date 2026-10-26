@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.3.14
+
+- Kein Hinweis „Rolle im Drucker ohne Zuordnung“ mehr für die externe Spule: Der Drucker hat dort keinen Sensor und meldet den zuletzt eingestellten Filamenttyp auch ohne Rolle
+
 ## 1.3.13
 
 - Hinweis „Diese Sorte gibt es schon“ nur noch bei gleichem Hersteller, Material, Typ und Farbname; eine ähnliche Farbe allein löst ihn nicht mehr aus

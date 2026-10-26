@@ -1300,7 +1300,9 @@ function dot(rgba, size = 22) {
 
 function unassignedSlots() {
   // Belegt, ohne Chip und keiner Lager-Rolle zugeordnet: hier zieht Bambuddy keinen Verbrauch ab.
-  return allSlots().filter((x) => x.connected && x.present && !x.chip && !assignmentAt(x));
+  // Die externe Spule zählt nicht: Der Drucker meldet dort keinen Sensor, nur den zuletzt eingestellten Filamenttyp,
+  // auch wenn gar keine Rolle hängt. Zuordnen lässt sie sich weiterhin über „In Drucker einlegen“.
+  return allSlots().filter((x) => x.connected && x.present && !x.chip && x.ams_id !== 255 && !assignmentAt(x));
 }
 
 function renderSlotBox() {
