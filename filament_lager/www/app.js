@@ -40,6 +40,8 @@ const ICONS = {
   box: '<path d="M3.5 8 12 3.5 20.5 8v8L12 20.5 3.5 16z"/><path d="M3.5 8 12 12.5 20.5 8M12 12.5v8"/>',
   drawer: '<rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M3.5 9.5h17M3.5 15h17M10 6.5h4M10 12.2h4M10 17.8h4"/>',
   cabinet: '<rect x="4.5" y="2.5" width="15" height="19" rx="2"/><path d="M12 2.5v19M9.5 11v2M14.5 11v2"/>',
+  tiles: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
+  rows: '<rect x="3.5" y="4" width="17" height="4" rx="1.2"/><rect x="3.5" y="10" width="17" height="4" rx="1.2"/><rect x="3.5" y="16" width="17" height="4" rx="1.2"/>',
   bag: '<path d="M6 7h12l1 13.5H5z"/><path d="M5.5 11h13M9 7V5.5a3 3 0 0 1 6 0V7"/>',
 };
 const ic = (name, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -79,6 +81,19 @@ function setTheme(theme, save) {
   try { localStorage.setItem("theme", theme); } catch { /* egal */ }
   if (save) api("api/me", { method: "POST", body: JSON.stringify({ theme }) }).catch(() => {});
 }
+
+// Lager als Kacheln oder Liste, je Benutzer gespeichert wie das Design.
+function setView(view, save) {
+  state.view = view === "list" ? "list" : "tiles";
+  document.querySelectorAll(".viewSwitch button").forEach((b) => b.classList.toggle("active", b.dataset.view === state.view));
+  try { localStorage.setItem("view", state.view); } catch { /* egal */ }
+  if (save) api("api/me", { method: "POST", body: JSON.stringify({ view: state.view }) }).catch(() => {});
+  if (state.loaded) renderStock();
+}
+
+$("#viewTiles").innerHTML = ic("tiles");
+$("#viewList").innerHTML = ic("rows");
+document.querySelectorAll(".viewSwitch button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view, true)));
 
 $("#themeBtn").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark", true));
 setTheme(document.documentElement.dataset.theme);
@@ -243,6 +258,7 @@ async function load(quiet) {
   // Rechte bei jedem Abruf auffrischen, damit Änderungen durch den Admin ohne Neuladen greifen.
   const me = await api("api/me").catch(() => state.me);
   if (me?.theme && me.theme !== document.documentElement.dataset.theme) setTheme(me.theme);
+  if (me?.view && me.view !== state.view) setView(me.view);
   if (me && me.level !== state.me?.level) {
     state.me = me;
     applyRights();
@@ -556,14 +572,26 @@ function renderStock() {
     byBrand.get(g.brand).push(g);
   }
   const brands = [...byBrand.keys()].sort((a, b) => a.localeCompare(b, "de"));
+  const asList = state.view === "list";
+  const rollCount = (list) => { const n = list.reduce((m, g) => m + g.spools.length, 0); return `${n} ${n === 1 ? "Rolle" : "Rollen"}`; };
   $("#brands").innerHTML = brands.map((brand) => {
-    const list = byBrand.get(brand).sort((a, b) => (a.material + a.subtype + a.color_name).localeCompare(b.material + b.subtype + b.color_name, "de"));
-    const count = list.reduce((n, g) => n + g.spools.length, 0);
+    const list = byBrand.get(brand).sort((a, b) => (a.subtype + a.color_name).localeCompare(b.subtype + b.color_name, "de"));
+    // Innerhalb des Herstellers nach Material getrennt, jeweils mit Überschrift.
+    const byMat = new Map();
+    for (const g of list) {
+      const mat = g.material || "Ohne Material";
+      if (!byMat.has(mat)) byMat.set(mat, []);
+      byMat.get(mat).push(g);
+    }
+    const mats = [...byMat.keys()].sort((a, b) => a.localeCompare(b, "de"));
     return `<div class="brand">
-      <div class="brandHead">${logoHtml(brand)}<h2>${esc(brand)}</h2><span class="muted">${count} ${count === 1 ? "Rolle" : "Rollen"}</span>
+      <div class="brandHead">${logoHtml(brand)}<h2>${esc(brand)}</h2><span class="muted">${rollCount(list)}</span>
         ${websiteLink(brand)}
         <button class="icon need-edit" data-act="brand" data-brand="${esc(brand)}" title="Hersteller bearbeiten">${ic("edit")}</button></div>
-      <div class="grid">${list.map(tileHtml).join("")}</div></div>`;
+      ${mats.map((mat) => `<div class="matGroup">
+        <h3 class="matHead">${esc(mat)} <span class="muted">${rollCount(byMat.get(mat))}</span></h3>
+        ${asList ? `<div class="stockList">${byMat.get(mat).map(rowHtml).join("")}</div>` : `<div class="grid">${byMat.get(mat).map(tileHtml).join("")}</div>`}
+      </div>`).join("")}</div>`;
   }).join("");
 }
 
@@ -571,7 +599,6 @@ function tileHtml(g) {
   const pct = g.capacity ? Math.round((g.remaining / g.capacity) * 100) : 0;
   const cls = g.empty ? "empty" : g.low ? "low" : "";
   const badge = g.empty ? `<span class="badge empty">leer</span>` : g.low ? `<span class="badge low">knapp</span>` : "";
-  const cart = cartFor(g);
   return `<div class="tile ${cls}">
     <div class="tileTop" data-edit="${esc(g.key)}" title="Antippen zum Bearbeiten"><span class="swatch" style="background:${color(g)}"></span>
       <div class="grow"><div class="tileName">${esc(g.color_name || "Ohne Farbname")} <span class="editHint need-edit">${ic("edit")}</span></div>
@@ -586,12 +613,38 @@ function tileHtml(g) {
       <span>${ic("clock")} ${g.lastUsed ? "zuletzt " + fmtDate(g.lastUsed) : "noch nie verwendet"}</span>
     </div>
     <div class="tileActions">
-      <button class="minus need-edit" data-act="minus" data-key="${esc(g.key)}" title="Eine Rolle ausbuchen"${g.shelf ? "" : " disabled"}>−</button>
+      ${tileActions(g)}
+    </div></div>`;
+}
+
+function tileActions(g) {
+  const cart = cartFor(g);
+  return `<button class="minus need-edit" data-act="minus" data-key="${esc(g.key)}" title="Eine Rolle ausbuchen"${g.shelf ? "" : " disabled"}>−</button>
       <button class="need-add" data-act="plus" data-key="${esc(g.key)}" title="Eine volle Rolle dazubuchen">+1</button>
       <button class="need-add" data-act="cart" data-key="${esc(g.key)}" title="Auf die Einkaufsliste">${cart ? `${ic("cart")} <span class="badge cart">${cart.quantity_spools}</span>` : ic("cart")}</button>
       <button class="need-add" data-act="load" data-key="${esc(g.key)}" title="Rolle in den Drucker einlegen"${g.shelf ? "" : " disabled"}>${ic("printer")}</button>
-      <button data-act="rolls" data-key="${esc(g.key)}" title="Rollen einzeln ansehen, Restgewicht und Verbrauch">${ic("list")}</button>
-    </div></div>`;
+      <button data-act="rolls" data-key="${esc(g.key)}" title="Rollen einzeln ansehen, Restgewicht und Verbrauch">${ic("list")}</button>`;
+}
+
+// Listenansicht: eine Zeile pro Sorte mit denselben Angaben und Knöpfen wie die Kachel.
+function rowHtml(g) {
+  const pct = g.capacity ? Math.round((g.remaining / g.capacity) * 100) : 0;
+  const cls = g.empty ? "empty" : g.low ? "low" : "";
+  const badge = g.empty ? `<span class="badge empty">leer</span>` : g.low ? `<span class="badge low">knapp</span>` : "";
+  const where = [
+    ...g.places.map((pl) => `<span>${placeIcon(pl)} ${esc(pl)}</span>`),
+    ...g.slotList.map((x) => `<span>${printerIcon(x.printer_id)} ${esc(x.label)}</span>`),
+  ];
+  return `<div class="stockRow ${cls}">
+    <div class="rowName" data-edit="${esc(g.key)}" title="Antippen zum Bearbeiten"><span class="swatch" style="background:${color(g)}"></span>
+      <div><div class="tileName">${esc(g.color_name || "Ohne Farbname")} <span class="editHint need-edit">${ic("edit")}</span></div>
+      <div class="tileSub">${esc(g.subtype || "")}${missingFields(g).length ? ` <span class="missing">${g.subtype ? "· " : ""}fehlt: ${missingFields(g).join(", ")}</span>` : ""}</div></div></div>
+    <div class="rowStock"><span><b>${g.shelf}</b> im Lager${g.printer ? ` · <b>${g.printer}</b> im Drucker` : ""} ${badge}</span>
+      <div class="rowBar"><div class="bar"><span style="width:${pct}%"></span></div><span>${kg(g.remaining)}</span></div></div>
+    <div class="rowWhere tileMeta">${where.length ? where.join("") : g.shelf ? `<span class="muted">${ic("pin")} kein Lagerplatz</span>` : ""}
+      ${g.value ? `<span>${ic("coin")} ${money(g.value)}</span>` : ""}</div>
+    <div class="tileActions">${tileActions(g)}</div>
+  </div>`;
 }
 
 function missingFields(g) {
@@ -1634,6 +1687,9 @@ async function loadUsers() {
 (async () => {
   state.me = await api("api/me").catch(() => ({ level: 0 }));
   if (state.me.theme) setTheme(state.me.theme);
+  let view = state.me.view;
+  try { view = view || localStorage.getItem("view"); } catch { /* egal */ }
+  setView(view);
   applyRights();
   try {
     const saved = JSON.parse(localStorage.getItem("filter") || "{}");

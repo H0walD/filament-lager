@@ -260,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/me":
                 if self.command == "POST":
                     return self.save_theme()
-                return self.send(200, {"name": self.user["name"], "level": self.user["level"], "theme": self.user.get("theme")})
+                return self.send(200, {"name": self.user["name"], "level": self.user["level"], "theme": self.user.get("theme"), "view": self.user.get("view")})
             if path == "/users":
                 return self.users()
             if path.startswith("/api/inventory/"):
@@ -447,16 +447,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send(200, PRINTER_IMAGES[name], "image/png", {"Cache-Control": "max-age=86400"})
 
     def save_theme(self):
-        # Hell/Dunkel je Home-Assistant-Benutzer merken, damit es auf allen Geräten gleich ist.
-        theme = (json.loads(self.read_body() or b"{}") or {}).get("theme")
-        if theme not in ("light", "dark"):
-            return self.send(400, {"detail": "Unbekanntes Design"})
+        # Hell/Dunkel und Kacheln/Liste je Home-Assistant-Benutzer merken, damit es auf allen Geräten gleich ist.
+        data = json.loads(self.read_body() or b"{}") or {}
+        allowed = {"theme": ("light", "dark"), "view": ("tiles", "list")}
+        prefs = {k: data[k] for k in allowed if k in data}
+        if not prefs or any(v not in allowed[k] for k, v in prefs.items()):
+            return self.send(400, {"detail": "Unbekannte Einstellung"})
         if self.user.get("id"):
             with USERS_LOCK:
                 users = load_users()
-                users.setdefault(self.user["id"], {})["theme"] = theme
+                users.setdefault(self.user["id"], {}).update(prefs)
                 save_users(users)
-        return self.send(200, {"theme": theme})
+        return self.send(200, prefs)
 
     def users(self):
         # Nur anzeigen: Rechte werden in der App-Konfiguration von Home Assistant vergeben.

@@ -77,6 +77,38 @@ main { padding: 16px; max-width: 1300px; margin: 0 auto; }
 .brand { margin-bottom: 22px; }
 .brandHead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .brandHead h2 { font-size: 17px; margin: 0; }
+.matGroup { margin: 0 0 14px; }
+.matHead { font-size: 14px; font-weight: 600; margin: 4px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); text-transform: none; }
+.matHead .muted { font-weight: 400; font-size: 12px; margin-left: 6px; }
+.viewSwitch { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.viewSwitch button { border: 0; border-radius: 0; padding: 7px 10px; background: transparent; color: var(--muted); display: inline-flex; }
+.viewSwitch button.active { background: var(--chip); color: var(--text); }
+.stockList { display: flex; flex-direction: column; gap: 6px; }
+.stockRow {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+  display: grid; grid-template-columns: minmax(180px, 1.3fr) minmax(170px, 1fr) minmax(140px, 1.2fr) 250px; gap: 12px; align-items: center;
+}
+.stockRow.low { border-color: var(--warn); }
+.stockRow.empty { border-color: var(--danger); opacity: 0.85; }
+.stockRow.low .bar > span { background: var(--warn); }
+.stockRow.empty .bar > span { background: var(--danger); }
+.stockRow .swatch { width: 30px; height: 30px; }
+.rowName { display: flex; gap: 10px; align-items: center; cursor: pointer; min-width: 0; }
+.rowStock { font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.rowBar { display: flex; align-items: center; gap: 8px; }
+.rowBar .bar { flex: 1; }
+.rowBar > span { white-space: nowrap; }
+.rowWhere { font-size: 12px; }
+.stockRow .tileActions { justify-content: flex-end; }
+.stockRow .tileActions button { flex: none; padding: 5px 9px; }
+@media (max-width: 900px) {
+  .stockRow { grid-template-columns: 1fr 1fr; }
+  .stockRow .tileActions { grid-column: 1 / -1; }
+  .stockRow .tileActions button { flex: 1; }
+}
+@media (max-width: 520px) {
+  .stockRow { grid-template-columns: 1fr; gap: 8px; }
+}
 .logo {
   width: 36px; height: 36px; border-radius: 8px; flex: none;
   background: #fff; border: 1px solid var(--border);

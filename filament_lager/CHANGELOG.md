@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.3.12
+
+- Im Lager ist jeder Hersteller nach Material unterteilt, jeweils mit Überschrift und Anzahl Rollen
+- Umschalter Kacheln / Liste neben „Neues Material“; die Wahl wird pro Benutzer gespeichert und gilt auf allen Geräten
+
 ## 1.3.11
 
 - Hersteller löschen (Papierkorb im Reiter Hersteller), nur möglich, wenn dem Hersteller keine Rolle mehr zugewiesen ist; Webseite und Logo werden mit entfernt

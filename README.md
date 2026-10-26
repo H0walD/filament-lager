@@ -17,11 +17,17 @@
 
 ![Lagerübersicht](images/lager.png)
 
+<details><summary>Listenansicht</summary>
+
+![Listenansicht](images/liste.png)
+
+</details>
+
 ## Was die App kann
 
 Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, die Lagerverwaltung dort ist aber eher technisch. Filament-Lager legt eine einfache Oberfläche darüber und speichert alles direkt in Bambuddy.
 
-- **Übersicht auf einen Blick**: jede Sorte als Farbkachel, gruppiert nach Hersteller (mit eigenem Logo und Link zur Webseite). Du siehst Rollen im Lager und im Drucker, angebrochene Rollen, Restgewicht, Lagerplatz und wann das Material zuletzt verwendet wurde. Was knapp wird, ist orange markiert, was leer ist, rot.
+- **Übersicht auf einen Blick**: jede Sorte als Farbkachel oder als Zeile in der Listenansicht (Umschalter oben, wird pro Benutzer gespeichert), gruppiert nach Hersteller (mit eigenem Logo und Link zur Webseite) und darunter nach Material. Du siehst Rollen im Lager und im Drucker, angebrochene Rollen, Restgewicht, Lagerplatz und wann das Material zuletzt verwendet wurde. Was knapp wird, ist orange markiert, was leer ist, rot.
 - **Schnell erfassen**: „+1 Rolle“ bei jeder Sorte oder „Neues Material“ mit Hersteller, Material, Typ, Farbe (auch als Hex-Code, transparent und durchscheinend mit Deckkraft), Gewicht, Anzahl und Lagerplatz.
 - **Keine Doppelten**: Schreibweisen werden vereinheitlicht („bambu lab“ wird „Bambu Lab“), und gibt es eine Sorte schon, schlägt die App vor, die Rollen dort dazuzubuchen.
 - **Einkaufsliste**: Warenkorb-Knopf an jeder Sorte, Status „zu kaufen“, „bestellt“, „eingetroffen“. Beim Eintreffen werden die Rollen direkt ins Lager gebucht. Neben jedem Eintrag steht der aktuelle Lagerbestand.
