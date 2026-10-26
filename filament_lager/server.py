@@ -509,6 +509,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def brand_settings(self, brand):
         key = brand_key(brand)
+        if key and self.command == "DELETE":
+            return self.delete_brand(key)
         if not key or self.command != "PUT":
             return self.send(400, {"detail": "Ungültig"})
         data = json.loads(self.read_body() or b"{}")
@@ -519,6 +521,23 @@ class Handler(BaseHTTPRequestHandler):
         brands[key] = entry
         save_brands(brands)
         self.send(200, entry)
+
+    def delete_brand(self, key):
+        # Nur ohne Rollen: sonst stünde der Hersteller über die Rollen sofort wieder in der Liste.
+        try:
+            spools = bambuddy("GET", "inventory/spools") or []
+        except (urllib.error.URLError, OSError, ValueError):
+            return self.send(502, {"detail": "Bambuddy nicht erreichbar, Hersteller nicht gelöscht"})
+        rolls = sum(1 for sp in spools if not sp.get("archived_at") and brand_key(sp.get("brand")) == key)
+        if rolls:
+            return self.send(409, {"detail": f"Dem Hersteller sind noch {rolls} {'Rolle' if rolls == 1 else 'Rollen'} zugewiesen"})
+        brands = load_brands()
+        brands.pop(key, None)
+        save_brands(brands)
+        for p in logo_paths(key):
+            if os.path.exists(p):
+                os.remove(p)
+        self.send(200, {"ok": True})
 
     def logo(self, brand):
         key = brand_key(brand)

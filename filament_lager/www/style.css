@@ -150,6 +150,9 @@ input[type=color] { height: 38px; padding: 2px; }
 }
 .brandCardName { font-weight: 600; font-size: 17px; }
 .brandCard button { margin-top: 4px; font-size: 13px; padding: 5px 12px; }
+.brandActions { display: flex; gap: 6px; justify-content: center; }
+.brandActions .danger { padding: 5px 9px; display: inline-flex; align-items: center; }
+.brandActions .danger:disabled { background: transparent; border-color: var(--border); color: var(--muted); opacity: .5; cursor: not-allowed; }
 .siteLink { color: var(--accent); text-decoration: none; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .siteLink:hover { text-decoration: underline; }
 .removeLogoRow span { display: flex; align-items: center; gap: 6px; color: var(--text); }

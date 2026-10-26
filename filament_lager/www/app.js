@@ -36,6 +36,7 @@ const ICONS = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  trash: '<path d="M4 7h16M9.5 7V4.5h5V7M6 7l1 13.5h10L18 7"/><path d="M10 11v6M14 11v6"/>',
   box: '<path d="M3.5 8 12 3.5 20.5 8v8L12 20.5 3.5 16z"/><path d="M3.5 8 12 12.5 20.5 8M12 12.5v8"/>',
   drawer: '<rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M3.5 9.5h17M3.5 15h17M10 6.5h4M10 12.2h4M10 17.8h4"/>',
   cabinet: '<rect x="4.5" y="2.5" width="15" height="19" rx="2"/><path d="M12 2.5v19M9.5 11v2M14.5 11v2"/>',
@@ -322,9 +323,27 @@ function websiteLink(brand) {
 }
 
 function color(g) {
-  const hex = (g.rgba || "").slice(0, 6);
-  return /^[0-9a-f]{6}$/i.test(hex) ? "#" + hex : "#999999";
+  return swatchBg(g.rgba, "#999999");
 }
+
+// Bambuddy speichert Farben als RRGGBBAA. Durchsichtige Farben liegen wie in Bambu Studio über einem Schachbrett,
+// leicht abgeschwächt, damit auch ein klares Blau noch als Blau erkennbar ist.
+function swatchBg(rgba, fallback = "#999") {
+  if (!/^[0-9a-f]{6}/i.test(rgba || "")) return fallback;
+  const alpha = /^[0-9a-f]{8}$/i.test(rgba) ? parseInt(rgba.slice(6, 8), 16) / 255 : 1;
+  if (alpha >= 1) return "#" + rgba.slice(0, 6);
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(rgba.slice(i, i + 2), 16));
+  const c = `rgba(${r},${g},${b},${(0.35 + 0.6 * alpha).toFixed(2)})`;
+  return `linear-gradient(${c},${c}),repeating-conic-gradient(#c8c8c8 0 25%,#f4f4f4 0 50%) 50% / 12px 12px`;
+}
+
+// Deckkraft-Auswahl im Formular: nächster Wert zu Bambuddys Alpha.
+function alphaOption(rgba) {
+  const a = /^[0-9a-f]{8}$/i.test(rgba || "") ? parseInt(rgba.slice(6, 8), 16) : 255;
+  return a > 0xc0 ? "FF" : a > 0x40 ? "80" : "00";
+}
+
+const formRgba = (form) => form.color.value.slice(1).toUpperCase() + form.alpha.value;
 
 // Farbfamilie aus dem Hex-Code, damit „Black“ und „Schwarz“ im selben Filter landen.
 function colorFamily(rgba) {
@@ -371,7 +390,7 @@ function matchesFilter(g) {
 function renderChipBox() {
   // Chip-Rollen vom Drucker: automatisch zusammengeführte (letzte 24 h) und unklare zum Zuordnen.
   const rec = state.reconcile || {};
-  const dot = (rgba) => `<span class="swatch" style="background:${/^[0-9a-f]{6}/i.test(rgba || "") ? "#" + rgba.slice(0, 6) : "#999"}"></span>`;
+  const dot = (rgba) => `<span class="swatch" style="background:${swatchBg(rgba)}"></span>`;
   const recent = (rec.merged || []).filter((m) => Date.now() / 1000 - m.time < 86400).reverse();
   const unclear = rec.unclear || [];
   if (!recent.length && !unclear.length) return $("#chipBox").classList.add("hidden");
@@ -425,7 +444,10 @@ function renderBrands() {
       <span class="brandCardName">${esc(b.name)}</span>
       <span class="muted">${b.rolls} ${b.rolls === 1 ? "Rolle" : "Rollen"}</span>
       ${websiteLink(b.name) || `<span class="muted">keine Webseite</span>`}
-      <button class="need-edit" data-act="brand" data-brand="${esc(b.name)}">Bearbeiten</button>
+      <div class="brandActions">
+        <button class="need-edit" data-act="brand" data-brand="${esc(b.name)}">Bearbeiten</button>
+        <button class="need-edit danger" data-act="deleteBrand" data-brand="${esc(b.name)}" ${b.rolls ? `disabled title="Löschen geht erst, wenn keine Rolle mehr zugewiesen ist"` : `title="Hersteller löschen"`}>${ic("trash")}</button>
+      </div>
     </div>`).join("") : `<div class="emptyState">Noch keine Hersteller.</div>`;
 }
 
@@ -664,7 +686,7 @@ function askConfirm(title, html, yesLabel = "Bestätigen", danger = false) {
 }
 
 function sortLine(f, qty) {
-  const sw = /^[0-9a-f]{6}/i.test(f.rgba || "") ? `<span class="swatch" style="background:#${f.rgba.slice(0, 6)}"></span>` : "";
+  const sw = /^[0-9a-f]{6}/i.test(f.rgba || "") ? `<span class="swatch" style="background:${swatchBg(f.rgba)}"></span>` : "";
   return `<div class="confirmLine">${sw}<span><b>${qty}×</b> ${esc(f.brand || "")} ${esc([f.material, f.subtype].filter(Boolean).join(" "))} <b>${esc(f.color_name || "")}</b></span></div>`;
 }
 
@@ -760,6 +782,7 @@ document.addEventListener("click", (ev) => {
   else if (act === "rolls" && g) { btn.disabled = false; openRolls(g); }
   else if (act === "place") { btn.disabled = false; if (can(EDIT)) openPlace(parseInt(btn.dataset.place, 10)); }
   else if (act === "brand") { btn.disabled = false; if (can(EDIT)) openBrand(btn.dataset.brand); }
+  else if (act === "deleteBrand") { btn.disabled = false; if (can(EDIT)) deleteBrand(btn.dataset.brand); }
   else if (act === "level") btn.disabled = false;
   else if (act === "resolve") {
     const stockId = parseInt(document.querySelector(`select[data-chip="${btn.dataset.chip}"]`).value, 10);
@@ -820,7 +843,7 @@ function readNewForm() {
     subtype: canonical(f.get("subtype"), "subtype") || null,
     color_name: canonical(f.get("color_name"), "color_name"),
     // Ohne gewählte Farbe kein Grau speichern, sonst sieht die Rolle fälschlich grau aus.
-    rgba: $("#newForm").color.dataset.touched === "1" ? f.get("color").slice(1).toUpperCase() + "FF" : null,
+    rgba: $("#newForm").color.dataset.touched === "1" ? formRgba($("#newForm")) : null,
     label_weight: parseInt(f.get("label_weight"), 10) || 1000,
     weight_used: 0,
     ...(f.get("cost_per_kg") ? { cost_per_kg: Math.max(0, parseFloat(String(f.get("cost_per_kg")).replace(",", ".")) || 0) } : {}),
@@ -875,7 +898,7 @@ async function bookToGroup(g) {
 }
 
 $("#newForm").addEventListener("input", (ev) => {
-  if (ev.target.name === "color") ev.target.dataset.touched = "1";
+  if (ev.target.name === "color" || ev.target.name === "alpha") $("#newForm").color.dataset.touched = "1";
   updateDupHint();
 });
 
@@ -908,12 +931,15 @@ $("#newForm").addEventListener("submit", async (ev) => {
 for (const form of [$("#newForm"), $("#editForm")]) {
   const picker = form.color, hex = form.hex;
   picker.addEventListener("input", () => { hex.value = picker.value.toUpperCase(); hex.setCustomValidity(""); });
+  form.alpha.addEventListener("change", () => { picker.dataset.touched = "1"; });
   hex.addEventListener("input", () => {
+    // 6 Stellen für die Farbe, optional 2 weitere für die Deckkraft (#RRGGBBAA wie in Bambu Studio).
     const v = hex.value.trim().replace(/^#?/, "#");
-    const ok = /^#[0-9a-f]{6}$/i.test(v);
-    hex.setCustomValidity(ok || !hex.value.trim() ? "" : "Bitte 6-stelligen Hex-Code eingeben, z. B. #FF9016");
+    const ok = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v);
+    hex.setCustomValidity(ok || !hex.value.trim() ? "" : "Bitte Hex-Code eingeben, z. B. #FF9016 oder transparent #FF901680");
     if (!ok) return;
-    picker.value = v.toLowerCase();
+    picker.value = v.slice(0, 7).toLowerCase();
+    if (v.length === 9) form.alpha.value = alphaOption(v.slice(1));
     picker.dataset.touched = "1";
     form.dispatchEvent(new Event("input", { bubbles: true }));
   });
@@ -947,6 +973,7 @@ function openEdit(g) {
   // Haben die Rollen unterschiedliche Farben, wird beim Speichern die angezeigte für alle gesetzt.
   f.color.dataset.touched = g.mixedColors ? "1" : "";
   f.hex.value = g.rgba ? "#" + g.rgba.slice(0, 6).toUpperCase() : "";
+  f.alpha.value = alphaOption(g.rgba);
   f.label_weight.value = t.label_weight || 1000;
   f.core_weight.value = t.core_weight ?? 250;
   f.cost_per_kg.value = t.cost_per_kg ?? "";
@@ -972,16 +999,17 @@ $("#editForm").addEventListener("submit", async (ev) => {
     core_weight: f.core_weight.value === "" ? t.core_weight ?? 250 : Math.max(0, parseInt(f.core_weight.value, 10) || 0),
     cost_per_kg: f.cost_per_kg.value === "" ? null : Math.max(0, parseFloat(f.cost_per_kg.value.replace(",", ".")) || 0),
   };
-  if (f.color.dataset.touched === "1") next.rgba = f.color.value.slice(1).toUpperCase() + "FF";
+  if (f.color.dataset.touched === "1") next.rgba = formRgba(f);
   const labels = { brand: "Hersteller", material: "Material", subtype: "Typ", color_name: "Farbname", label_weight: "Gewicht", rgba: "Farbe", core_weight: "Leergewicht Spule", cost_per_kg: "Preis pro kg" };
   const changes = Object.keys(next).filter((k) => k === "rgba"
-    ? editGroup.mixedColors || (editGroup.rgba || "").slice(0, 6).toUpperCase() !== next.rgba.slice(0, 6)
+    ? editGroup.mixedColors || (editGroup.rgba || "").slice(0, 6).toUpperCase() !== next.rgba.slice(0, 6) || alphaOption(editGroup.rgba) !== next.rgba.slice(6)
     : (next[k] ?? "") !== (t[k] ?? ""));
   const loc = f.location.value;
   const shelfIds = editGroup.spools.filter((s) => !state.inPrinter?.has(s.id)).map((s) => s.id);
   if (!changes.length && (!loc || !shelfIds.length)) return $("#editDialog").close();
   const update = Object.fromEntries(changes.map((k) => [k, next[k]]));
-  const show = (k, v, old) => (k === "rgba" && v ? (old && editGroup.mixedColors ? "verschieden je Rolle" : "#" + v.slice(0, 6).toUpperCase()) : v);
+  const alphaName = { FF: "", 80: " durchscheinend", "00": " transparent" };
+  const show = (k, v, old) => (k === "rgba" && v ? (old && editGroup.mixedColors ? "verschieden je Rolle" : "#" + v.slice(0, 6).toUpperCase() + alphaName[alphaOption(v)]) : v);
   let rows = changes.map((k) => `<div>${labels[k]}: <s class="muted">${esc(show(k, t[k], true) || "–")}</s> → <b>${esc(show(k, next[k]) || "–")}</b></div>`).join("");
   const locName = loc === "none" ? "kein Lagerplatz" : state.locations?.get(parseInt(loc, 10));
   if (loc && shelfIds.length) rows += `<div>Lagerplatz: → <b>${esc(locName)}</b> (${shelfIds.length} ${shelfIds.length === 1 ? "Rolle" : "Rollen"} im Lager)</div>`;
@@ -1221,8 +1249,7 @@ function rollName(s) {
 }
 
 function dot(rgba, size = 22) {
-  const ok = /^[0-9a-f]{6}/i.test(rgba || "");
-  return `<span class="swatch" style="width:${size}px;height:${size}px;background:${ok ? "#" + rgba.slice(0, 6) : "#999"}"></span>`;
+  return `<span class="swatch" style="width:${size}px;height:${size}px;background:${swatchBg(rgba)}"></span>`;
 }
 
 function unassignedSlots() {
@@ -1451,6 +1478,23 @@ document.addEventListener("click", (ev) => {
     if (slot) openLoad({ slot });
   }
 });
+
+async function deleteBrand(name) {
+  const rolls = state.spools.filter((s) => brandKey(s.brand) === brandKey(name)).length;
+  if (rolls) return toast(`${name} hat noch ${rolls} ${rolls === 1 ? "Rolle" : "Rollen"}, löschen geht erst ohne Rollen`, 4000);
+  const ok = await askConfirm("Hersteller löschen", `<div class="confirmLine">${logoHtml(name)}<span><b>${esc(name)}</b></span></div>
+    <p class="confirmNote">Webseite und Logo werden entfernt. Dem Hersteller ist keine Rolle zugewiesen.</p>`, "Löschen");
+  if (!ok) return;
+  try {
+    await api(`brands/${encodeURIComponent(name)}`, { method: "DELETE" });
+    state.brands = await api("brands").catch(() => state.brands);
+    state.logoVersion = Date.now();
+    render();
+    toast(`${name} gelöscht`);
+  } catch (e) {
+    toast("Nicht gelöscht: " + e.message, 5000);
+  }
+}
 
 // Hersteller-Logo
 let currentBrand = null;

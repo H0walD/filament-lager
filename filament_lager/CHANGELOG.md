@@ -1,5 +1,14 @@
 # Änderungen
 
+## 1.3.11
+
+- Hersteller löschen (Papierkorb im Reiter Hersteller), nur möglich, wenn dem Hersteller keine Rolle mehr zugewiesen ist; Webseite und Logo werden mit entfernt
+
+## 1.3.10
+
+- Transparente und durchscheinende Farben: neues Feld „Deckkraft“ beim Material, und der Hex-Code darf 8-stellig sein (#RRGGBBAA wie in Bambu Studio)
+- Durchsichtige Farben werden wie in Bambu Studio über einem Schachbrett angezeigt
+
 ## 1.3.9
 
 - Korrigierte Abbuchungen gehen auch ins Bambuddy-Archiv (Gramm und Materialkosten des Drucks)
