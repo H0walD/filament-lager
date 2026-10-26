@@ -20,11 +20,61 @@ const VIEW = 1, ADD = 2, EDIT = 3, ADMIN = 4;
 const LEVELS = ["Kein Zugriff", "Ansehen", "Erfassen", "Bearbeiten", "Admin"];
 const can = (level) => (state.me?.level ?? 0) >= level;
 
+// Einheitliche Linien-Icons statt Emojis, damit alles gleich aussieht.
+const ICONS = {
+  shelf: '<path d="M4 3v18M20 3v18M4 9h16M4 15h16"/><path d="M7 6h3v3H7zM13 12h4v3h-4zM8 18h3v3H8z"/>',
+  dryer: '<rect x="3" y="6" width="18" height="15" rx="2.5"/><circle cx="12" cy="13.5" r="4"/><circle cx="12" cy="13.5" r="1.2"/><path d="M8 2.5c.7.7.7 1.4 0 2M12 2.5c.7.7.7 1.4 0 2M16 2.5c.7.7.7 1.4 0 2"/>',
+  printer: '<rect x="3.5" y="2.5" width="17" height="19" rx="2.5"/><path d="M3.5 7h17M10 7h4v2.6h-4zM11.4 9.6h1.2L12 11z"/><path d="M9 15.5h6v2.5H9zM6.5 18h11"/>',
+  pin: '<path d="M12 21s-6.5-5.6-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.2"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.2 2"/>',
+  coin: '<circle cx="12" cy="12" r="9"/><path d="M14.6 9.4c-.5-.9-1.4-1.4-2.6-1.4-1.6 0-2.5.9-2.5 1.9 0 2.4 5.1 1.3 5.1 4.1 0 1.1-1 2-2.6 2-1.2 0-2.2-.6-2.6-1.5M12 6.5V8M12 16v1.5"/>',
+  spool: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3a9 9 0 0 1 9 9h-6a3 3 0 0 0-3-3z" fill="currentColor" stroke="none" opacity=".55"/>',
+  cart: '<path d="M3 4h2.2l2.3 10.5h10.3l2.1-7.5H6.4"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/>',
+  list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="18" r="1" fill="currentColor"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  box: '<path d="M3.5 8 12 3.5 20.5 8v8L12 20.5 3.5 16z"/><path d="M3.5 8 12 12.5 20.5 8M12 12.5v8"/>',
+  drawer: '<rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M3.5 9.5h17M3.5 15h17M10 6.5h4M10 12.2h4M10 17.8h4"/>',
+  cabinet: '<rect x="4.5" y="2.5" width="15" height="19" rx="2"/><path d="M12 2.5v19M9.5 11v2M14.5 11v2"/>',
+  bag: '<path d="M6 7h12l1 13.5H5z"/><path d="M5.5 11h13M9 7V5.5a3 3 0 0 1 6 0V7"/>',
+};
+const ic = (name, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+
+// Lagerplatz-Icon: selbst gewähltes Icon oder hochgeladenes Bild, sonst das Regal als Standard.
+const PLACE_ICONS = [["shelf", "Regal"], ["dryer", "Trockner"], ["box", "Kiste"], ["drawer", "Schublade"], ["cabinet", "Schrank"], ["bag", "Beutel"]];
+
+// Eigenes Icon: eingebautes („dryer“) oder Material Design Icon wie in Home Assistant („mdi:fridge“).
+function iconHtml(icon, cls = "") {
+  const m = /^mdi:([a-z0-9-]+)$/.exec(icon || "");
+  if (m) return `<span class="ic mdi ${cls}" style="-webkit-mask-image:url(mdi/${m[1]}.svg);mask-image:url(mdi/${m[1]}.svg)"></span>`;
+  return ic(ICONS[icon] ? icon : "shelf", cls);
+}
+
+function placeIconById(id, cls = "") {
+  const set = (state.places || {})[String(id)] || {};
+  if (id && set.image) return `<img class="locimg ${cls}" src="place-image/${id}?v=${Math.round(set.image)}" alt="">`;
+  return iconHtml(set.icon, cls);
+}
+
+function placeIcon(name) {
+  const loc = (state.locationList || []).find((l) => l.name === name);
+  return placeIconById(loc?.id);
+}
+
+// Bild des Druckers aus Bambuddy, bei Fehler das allgemeine Drucker-Icon.
+function printerIcon(printerId) {
+  if (printerId == null) return ic("printer");
+  return `<span class="pwrap"><img class="pimg" src="printer-image/${printerId}" alt="" onerror="this.parentNode.classList.add('noimg')">${ic("printer", "pfb")}</span>`;
+}
+
 // Hell/Dunkel: pro Benutzer im Server gespeichert, damit es auf allen Geräten gleich aussieht.
 function setTheme(theme, save) {
   theme = theme === "light" ? "light" : "dark";
   document.documentElement.dataset.theme = theme;
-  $("#themeBtn").textContent = theme === "dark" ? "☀ Hell" : "🌙 Dunkel";
+  $("#themeBtn").innerHTML = theme === "dark" ? ic("sun") + " Hell" : ic("moon") + " Dunkel";
   try { localStorage.setItem("theme", theme); } catch { /* egal */ }
   if (save) api("api/me", { method: "POST", body: JSON.stringify({ theme }) }).catch(() => {});
 }
@@ -61,12 +111,12 @@ async function api(path, opts = {}) {
   return data;
 }
 
-function toast(msg) {
+function toast(msg, ms = 2600) {
   const t = $("#toast");
   t.textContent = msg;
   t.classList.remove("hidden");
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.add("hidden"), 2600);
+  toast.timer = setTimeout(() => t.classList.add("hidden"), ms);
 }
 
 function banner(msg) {
@@ -157,7 +207,8 @@ function buildGroups() {
     g.opened = g.spools.filter((s) => (s.weight_used || 0) >= 1 && remaining(s) > 0).length;
     g.places = [...new Set(g.spools.map(spoolPlace).filter(Boolean))];
     g.value = g.spools.reduce((n, s) => n + rollValue(s), 0);
-    g.slots = g.spools.filter((s) => state.slotOf?.has(s.id)).map((s) => slotLabel(state.slotOf.get(s.id)));
+    g.slotList = g.spools.filter((s) => state.slotOf?.has(s.id)).map((s) => ({ printer_id: state.slotOf.get(s.id).printer_id, label: slotLabel(state.slotOf.get(s.id)) }));
+    g.slots = g.slotList.map((x) => x.label);
     g.lastUsed = g.spools.map((s) => s.last_used || state.lastUse?.get(s.id) || "").sort().pop() || "";
     const threshold = g.template.low_stock_threshold_pct;
     g.empty = g.remaining <= 0;
@@ -197,9 +248,10 @@ async function load(quiet) {
   }
   if (!can(VIEW)) return;
   try {
-    const [spools, shop, rec, slots, brands, locations, rawUsage, printers, edits] = await Promise.all([api("api/inventory/spools?include_archived=true"),
+    const [spools, shop, rec, slots, brands, locations, , rawUsage, printers, edits] = await Promise.all([api("api/inventory/spools?include_archived=true"),
       api("api/inventory/shopping-list"), api("reconcile").catch(() => null), api("api/inventory/assignments").catch(() => []),
       api("brands").catch(() => ({})), api("api/inventory/locations").catch(() => []),
+      api("places").then((p) => { state.places = p || {}; }).catch(() => {}),
       api("api/inventory/usage?limit=500").catch(() => []), api("printers").catch(() => null),
       api("usage-edits").catch(() => null)]);
     state.brands = brands;
@@ -266,7 +318,7 @@ function websiteLink(brand) {
   const url = websiteOf(brand);
   if (!url) return "";
   const label = url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
-  return `<a class="siteLink" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Webseite öffnen">🔗 ${esc(label)}</a>`;
+  return `<a class="siteLink" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Webseite öffnen">${ic("link")} ${esc(label)}</a>`;
 }
 
 function color(g) {
@@ -340,6 +392,7 @@ function render() {
   renderStock();
   renderShop();
   renderBrands();
+  renderPlaces();
   renderLists();
   renderUsage();
 }
@@ -487,7 +540,7 @@ function renderStock() {
     return `<div class="brand">
       <div class="brandHead">${logoHtml(brand)}<h2>${esc(brand)}</h2><span class="muted">${count} ${count === 1 ? "Rolle" : "Rollen"}</span>
         ${websiteLink(brand)}
-        <button class="icon need-edit" data-act="brand" data-brand="${esc(brand)}" title="Hersteller bearbeiten">✎</button></div>
+        <button class="icon need-edit" data-act="brand" data-brand="${esc(brand)}" title="Hersteller bearbeiten">${ic("edit")}</button></div>
       <div class="grid">${list.map(tileHtml).join("")}</div></div>`;
   }).join("");
 }
@@ -499,23 +552,23 @@ function tileHtml(g) {
   const cart = cartFor(g);
   return `<div class="tile ${cls}">
     <div class="tileTop" data-edit="${esc(g.key)}" title="Antippen zum Bearbeiten"><span class="swatch" style="background:${color(g)}"></span>
-      <div class="grow"><div class="tileName">${esc(g.color_name || "Ohne Farbname")} <span class="editHint need-edit">✎</span></div>
+      <div class="grow"><div class="tileName">${esc(g.color_name || "Ohne Farbname")} <span class="editHint need-edit">${ic("edit")}</span></div>
       <div class="tileSub">${esc([g.material, g.subtype].filter(Boolean).join(" "))}${missingFields(g).length ? ` <span class="missing">· fehlt: ${missingFields(g).join(", ")}</span>` : ""}</div></div></div>
     <div class="bar"><span style="width:${pct}%"></span></div>
     <div class="tileInfo"><span><b>${g.shelf}</b> im Lager${g.printer ? ` · <b>${g.printer}</b> im Drucker` : ""} ${badge}</span><span>${kg(g.remaining)}</span></div>
     <div class="tileMeta">
-      ${g.opened ? `<span>◔ ${g.opened} angebrochen</span>` : ""}
-      ${g.places.length ? `<span>📍 ${esc(g.places.join(", "))}</span>` : `<span class="muted">📍 ${g.shelf ? "kein Lagerplatz" : "alle im Drucker"}</span>`}
-      ${g.slots.length ? `<span>🖨 ${esc(g.slots.join(", "))}</span>` : ""}
-      ${g.value ? `<span>💰 ${money(g.value)} Wert</span>` : ""}
-      <span>🕓 ${g.lastUsed ? "zuletzt " + fmtDate(g.lastUsed) : "noch nie verwendet"}</span>
+      ${g.opened ? `<span>${ic("spool")} ${g.opened} angebrochen</span>` : ""}
+      ${g.places.length ? g.places.map((pl) => `<span>${placeIcon(pl)} ${esc(pl)}</span>`).join("") : g.shelf ? `<span class="muted">${ic("pin")} kein Lagerplatz</span>` : ""}
+      ${g.slotList.map((x) => `<span>${printerIcon(x.printer_id)} ${esc(x.label)}</span>`).join("")}
+      ${g.value ? `<span>${ic("coin")} ${money(g.value)} Wert</span>` : ""}
+      <span>${ic("clock")} ${g.lastUsed ? "zuletzt " + fmtDate(g.lastUsed) : "noch nie verwendet"}</span>
     </div>
     <div class="tileActions">
       <button class="minus need-edit" data-act="minus" data-key="${esc(g.key)}" title="Eine Rolle ausbuchen"${g.shelf ? "" : " disabled"}>−</button>
       <button class="need-add" data-act="plus" data-key="${esc(g.key)}" title="Eine volle Rolle dazubuchen">+1</button>
-      <button class="need-add" data-act="cart" data-key="${esc(g.key)}" title="Auf die Einkaufsliste">${cart ? `🛒 <span class="badge cart">${cart.quantity_spools}</span>` : "🛒"}</button>
-      <button class="need-add" data-act="load" data-key="${esc(g.key)}" title="Rolle in den Drucker einlegen"${g.shelf ? "" : " disabled"}>🖨</button>
-      <button data-act="rolls" data-key="${esc(g.key)}" title="Rollen einzeln ansehen, Restgewicht und Verbrauch">☰</button>
+      <button class="need-add" data-act="cart" data-key="${esc(g.key)}" title="Auf die Einkaufsliste">${cart ? `${ic("cart")} <span class="badge cart">${cart.quantity_spools}</span>` : ic("cart")}</button>
+      <button class="need-add" data-act="load" data-key="${esc(g.key)}" title="Rolle in den Drucker einlegen"${g.shelf ? "" : " disabled"}>${ic("printer")}</button>
+      <button data-act="rolls" data-key="${esc(g.key)}" title="Rollen einzeln ansehen, Restgewicht und Verbrauch">${ic("list")}</button>
     </div></div>`;
 }
 
@@ -529,7 +582,7 @@ function renderShop() {
   const open = items.filter((i) => i.status !== "received");
   $("#shopCount").textContent = open.length || "";
   if (!items.length) {
-    $("#shopList").innerHTML = `<div class="emptyState">Die Einkaufsliste ist leer. Tippe im Lager bei einer Sorte auf 🛒.</div>`;
+    $("#shopList").innerHTML = `<div class="emptyState">Die Einkaufsliste ist leer. Tippe im Lager bei einer Sorte auf den Warenkorb.</div>`;
     return;
   }
   $("#shopList").innerHTML = items.map((i) => {
@@ -548,7 +601,7 @@ function renderShop() {
       <div class="qty">${done ? "" : `<button class="icon need-add" data-act="qty-" data-id="${i.id}">−</button>`}<span>${i.quantity_spools}×</span>${done ? "" : `<button class="icon need-add" data-act="qty+" data-id="${i.id}">+</button>`}</div>
       <span class="status ${esc(i.status)}">${esc(statusLabel)}</span>
       ${actions}
-      <button class="icon need-add" data-act="remove" data-id="${i.id}" title="Entfernen">✕</button>
+      <button class="icon need-add" data-act="remove" data-id="${i.id}" title="Entfernen">${ic("close")}</button>
     </div>`;
   }).join("");
 }
@@ -690,7 +743,7 @@ document.addEventListener("click", (ev) => {
   if (!btn) return;
   if (btn.classList.contains("tab")) {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
-    for (const name of ["stock", "shop", "usage", "brands", "users"]) $("#tab-" + name).classList.toggle("hidden", btn.dataset.tab !== name);
+    for (const name of ["stock", "shop", "usage", "brands", "places", "users"]) $("#tab-" + name).classList.toggle("hidden", btn.dataset.tab !== name);
     if (btn.dataset.tab === "users") loadUsers();
     try { localStorage.setItem("tab", btn.dataset.tab); } catch { /* egal */ }
     return;
@@ -705,6 +758,7 @@ document.addEventListener("click", (ev) => {
   else if (act === "cart" && g) run(() => addToCart(g));
   else if (act === "load" && g) { btn.disabled = false; openLoad({ group: g }); }
   else if (act === "rolls" && g) { btn.disabled = false; openRolls(g); }
+  else if (act === "place") { btn.disabled = false; if (can(EDIT)) openPlace(parseInt(btn.dataset.place, 10)); }
   else if (act === "brand") { btn.disabled = false; if (can(EDIT)) openBrand(btn.dataset.brand); }
   else if (act === "level") btn.disabled = false;
   else if (act === "resolve") {
@@ -1006,7 +1060,7 @@ function renderUsage() {
       <div class="jobHead"><b>${esc(j.print_name || "Druck")}</b>${status}
         <span class="muted">${fmtDateTime(j.created_at)}${printerName(j.printer_id) ? " · " + esc(printerName(j.printer_id)) : ""}</span>
         <span class="jobTotal"><b>−${Math.round(grams)} g</b>${cost ? ` <span class="muted">${money(cost)}</span>` : ""}</span>
-        <button type="button" class="need-edit jobEdit" data-act="editJob" data-job="${esc(j.key)}" title="Abbuchung korrigieren">✎ Korrigieren</button></div>
+        <button type="button" class="need-edit jobEdit" data-act="editJob" data-job="${esc(j.key)}" title="Abbuchung korrigieren">${ic("edit")} Korrigieren</button></div>
       <div class="jobRows">
         <div class="jobRow jobLabels muted"><span></span><span>Rolle</span><span>vorher</span><span>abgebucht</span><span>danach</span></div>
         ${j.items.map((u) => {
@@ -1014,7 +1068,7 @@ function renderUsage() {
           return `<div class="jobRow">${dot(s?.rgba)}
             <span class="usageRoll"><b>${esc(s?.color_name || "Unbekannte Rolle")}</b> <span class="muted">${esc(s ? [s.brand, s.material, s.subtype].filter(Boolean).join(" ") : "")} · Rolle ${u.spool_id}${s?.archived_at ? " · ausgebucht" : ""}</span></span>
             <span class="num">${u.before == null ? "–" : Math.round(u.before) + " g"}</span>
-            <span class="num minus" title="${u.edited ? (u.manual ? "von Hand nachgetragen" : `korrigiert, Bambuddy hatte ${Math.round(u.original)} g`) : ""}">−${Math.round(u.weight_used)} g${u.edited ? " ✎" : ""}</span>
+            <span class="num minus" title="${u.edited ? (u.manual ? "von Hand nachgetragen" : `korrigiert, Bambuddy hatte ${Math.round(u.original)} g`) : ""}">−${Math.round(u.weight_used)} g${u.edited ? " " + ic("edit") : ""}</span>
             <span class="num"><b>${u.after == null ? "–" : Math.round(u.after) + " g"}</b></span></div>`;
         }).join("")}
       </div></div>`;
@@ -1055,12 +1109,13 @@ function usageJobs(list) {
 const jobKey = (u) => [u.print_name || "", u.printer_id ?? "", (u.created_at || "").slice(0, 16)].join("|");
 
 // Korrekturen aus dem Filament-Lager über die Bambuddy-Abbuchungen legen.
+function costOf(spoolId, grams, orig) {
+  const s = state.allSpools?.get(spoolId);
+  if (s?.cost_per_kg) return grams / 1000 * s.cost_per_kg;
+  return orig && orig.weight_used ? (orig.cost || 0) * grams / orig.weight_used : 0;
+}
+
 function mergeUsage(raw, edits) {
-  const costOf = (spoolId, grams, orig) => {
-    const s = state.allSpools?.get(spoolId);
-    if (s?.cost_per_kg) return grams / 1000 * s.cost_per_kg;
-    return orig && orig.weight_used ? (orig.cost || 0) * grams / orig.weight_used : 0;
-  };
   const list = raw.map((u) => {
     const fixed = edits.edits?.[String(u.id)];
     return fixed == null ? { ...u, original: u.weight_used }
@@ -1118,12 +1173,28 @@ $("#jobForm").addEventListener("submit", async (ev) => {
     return `<div class="confirmLine">${dot(u.spool?.rgba)}<span><b>${esc(u.spool ? rollName(u.spool) : "Rolle " + u.spool_id)}</b> · ${Math.round(u.weight_used)} g → <b>${Math.round(grams)} g</b>
       <span class="muted">(${diff > 0 ? "Rolle −" + Math.round(diff) + " g" : "Rolle +" + Math.round(-diff) + " g zurück"})</span></span></div>`;
   }).join("");
-  const ok = await askConfirm("Abbuchung korrigieren", rows + `<p class="confirmNote">Die Differenz wird direkt bei der Rolle verbucht, damit der Lagerbestand stimmt.</p>`, "Speichern");
+  const ok = await askConfirm("Abbuchung korrigieren", rows + `<p class="confirmNote">Die Differenz wird direkt bei der Rolle verbucht, damit der Lagerbestand stimmt. Die neue Summe des Drucks geht auch ins Bambuddy-Archiv, falls der Druck dort noch gespeichert ist.</p>`, "Speichern");
   if (!ok) return;
+  // Neue Summe des Drucks fürs Bambuddy-Archiv: korrigierte und unveränderte Rollen plus nachgetragene.
+  const final = new Map(editJob.items.map((u) => [u, u.weight_used]));
+  for (const c of changes) final.set(c.u, c.grams);
+  let total = 0, cost = 0;
+  for (const [u, grams] of final) {
+    total += grams;
+    cost += costOf(u.spool_id, grams, u);
+  }
+  const job = { print_name: editJob.print_name, printer_id: editJob.printer_id, created_at: editJob.created_at };
   try {
     for (const c of changes) await api("usage-edits", { method: "POST", body: JSON.stringify(c.body) });
     $("#jobDialog").close();
-    toast("Abbuchung korrigiert");
+    // Das Archiv ist nur eine Ergänzung: Fehlt der Druck dort, gibt es einen Hinweis statt eines Fehlers.
+    let sync;
+    try {
+      sync = await api("archive-sync", { method: "POST", body: JSON.stringify({ job, grams: total, cost: cost > 0 ? cost : null }) });
+    } catch (e) {
+      sync = { status: "failed", message: "Bambuddy-Archiv nicht aktualisiert" };
+    }
+    toast(sync.status === "ok" ? "Abbuchung korrigiert, auch im Bambuddy-Archiv" : "Rolle korrigiert. " + sync.message, sync.status === "ok" ? 2600 : 6000);
     await load(true);
   } catch (e) {
     $("#jobError").textContent = "Konnte nicht speichern: " + e.message;
@@ -1269,7 +1340,7 @@ function openRolls(g) {
 
 function rollCard(s) {
   const a = state.slotOf?.get(s.id);
-  const where = a ? `🖨 ${esc(slotLabel(a))}` : `📍 ${esc(spoolPlace(s) || "im Lager, kein Lagerplatz")}`;
+  const where = a ? `${printerIcon(a.printer_id)} ${esc(slotLabel(a))}` : spoolPlace(s) ? `${placeIcon(spoolPlace(s))} ${esc(spoolPlace(s))}` : `${ic("pin")} im Lager, kein Lagerplatz`;
   const pct = s.label_weight ? Math.round(remaining(s) / s.label_weight * 100) : 0;
   const usage = (state.usage?.get(s.id) || []).slice(0, 5);
   const core = s.core_weight ?? 250;
@@ -1397,6 +1468,82 @@ function openBrand(brand) {
 }
 
 $("#addBrand").addEventListener("click", () => openBrand(null));
+
+// ---------- Lagerplätze: Icon wählen oder eigenes Bild ----------
+
+function renderPlaces() {
+  const list = [...(state.locationList || [])].sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const count = (id) => state.spools.filter((s) => s.location_id === id && !state.inPrinter?.has(s.id)).length;
+  $("#placeGrid").innerHTML = list.length ? list.map((l) => `
+    <div class="brandCard">
+      <span class="placeBig">${placeIconById(l.id, "big")}</span>
+      <span class="brandCardName">${esc(l.name)}</span>
+      <span class="muted">${count(l.id)} ${count(l.id) === 1 ? "Rolle" : "Rollen"}</span>
+      <button class="need-edit" data-act="place" data-place="${l.id}">Icon ändern</button>
+    </div>`).join("") : `<div class="emptyState">Noch keine Lagerplätze. Lege sie in Bambuddy unter Inventar → Lagerorte an.</div>`;
+}
+
+let currentPlace = null;
+
+function openPlace(id) {
+  const loc = (state.locationList || []).find((l) => l.id === id);
+  if (!loc) return;
+  currentPlace = loc;
+  const set = (state.places || {})[String(id)] || {};
+  const f = $("#placeForm");
+  f.reset();
+  $("#placeName").textContent = loc.name;
+  $("#placeChoices").innerHTML = PLACE_ICONS.map(([key, label]) => `<label class="iconChoice">
+      <input type="radio" name="icon" value="${key}"${(set.icon || "shelf") === key ? " checked" : ""}>${ic(key)}<span>${label}</span></label>`).join("");
+  f.mdi.value = /^mdi:/.test(set.icon || "") ? set.icon : "";
+  updateMdiPreview();
+  $("#placeImagePreview").innerHTML = set.image ? placeIconById(id, "big") : "";
+  $("#placeRemoveRow").classList.toggle("hidden", !set.image);
+  $("#placeError").textContent = "";
+  $("#placeDialog").showModal();
+}
+
+// MDI-Namen beim Tippen vorschlagen und das Icon gleich zeigen.
+function updateMdiPreview() {
+  const v = $("#placeForm").mdi.value.trim().toLowerCase().replace(/^(mdi:)?/, "mdi:");
+  $("#mdiPreview").innerHTML = $("#placeForm").mdi.value.trim() ? iconHtml(v, "big") : "";
+  $("#placeChoices").classList.toggle("dimmed", !!$("#placeForm").mdi.value.trim());
+}
+
+let mdiTimer = null;
+$("#placeForm").mdi.addEventListener("input", () => {
+  updateMdiPreview();
+  clearTimeout(mdiTimer);
+  mdiTimer = setTimeout(async () => {
+    const names = await api("mdi-search?q=" + encodeURIComponent($("#placeForm").mdi.value)).catch(() => []);
+    $("#mdiList").innerHTML = names.map((n) => `<option value="${esc(n)}">`).join("");
+  }, 200);
+});
+
+$("#placeChoices").addEventListener("change", () => {
+  $("#placeForm").mdi.value = "";
+  updateMdiPreview();
+});
+
+$("#placeForm").addEventListener("submit", async (ev) => {
+  if (ev.submitter?.value !== "ok") return;
+  ev.preventDefault();
+  const f = ev.target;
+  const id = currentPlace.id;
+  const mdi = f.mdi.value.trim().toLowerCase().replace(/^(mdi:)?/, "mdi:");
+  const icon = f.mdi.value.trim() ? mdi : f.icon.value === "shelf" ? "" : f.icon.value;
+  const file = f.file.files[0];
+  try {
+    state.places = await api(`places/${id}`, { method: "PUT", body: JSON.stringify({ icon }) });
+    if (file) state.places = await api(`place-image/${id}`, { method: "POST", body: file, headers: { "Content-Type": file.type || "image/png" } });
+    else if (f.removeImage.checked) state.places = await api(`place-image/${id}`, { method: "DELETE" });
+    $("#placeDialog").close();
+    render();
+    toast("Icon gespeichert");
+  } catch (e) {
+    $("#placeError").textContent = "Konnte nicht speichern: " + e.message;
+  }
+});
 
 $("#brandForm").addEventListener("submit", async (ev) => {
   if (ev.submitter?.value !== "ok") return;

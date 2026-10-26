@@ -28,7 +28,8 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 - **Rollen im Drucker**: „🖨“ legt eine Rolle in einen AMS-Platz oder auf die externe Spule. So zieht Bambuddy auch bei Rollen ohne Chip den Verbrauch jedes Drucks ab. Steckt eine Rolle ohne Zuordnung im Drucker, zeigt die App oben einen Hinweis mit „Lager-Rolle zuordnen“. Auf jeder Kachel steht, in welchem Platz die Rollen stecken.
 - **Rollen einzeln**: „☰“ zeigt jede Rolle mit Restgewicht, Platz, Wert und den letzten Drucken samt Verbrauch. Lagerplatz und Restgewicht lassen sich dort pro Rolle ändern. Das Restgewicht lässt sich direkt eintragen oder aus dem Gewicht auf der Waage berechnen (das Leergewicht der Spule wird abgezogen).
 - **Verbrauch**: eigener Reiter, aufgelistet nach Druckauftrag. Pro Rolle siehst du das Gewicht vorher, was abgebucht wurde und was danach noch drauf ist, dazu Kosten, Summen und Verbrauch nach Sorte für 7, 30 oder 90 Tage. Vorher und danach werden aus dem heutigen Restgewicht zurückgerechnet; hast du eine Rolle zwischendurch nachgewogen, stimmen die Werte vor diesem Zeitpunkt nur ungefähr.
-- **Abbuchung korrigieren**: im Reiter Verbrauch bei jedem Druck „✎ Korrigieren“. Gramm pro Rolle ändern oder eine Rolle nachtragen, die nicht abgebucht wurde. Die Differenz wird sofort bei der Rolle verbucht, korrigierte Werte sind mit ✎ markiert. Die Korrekturen speichert die App selbst, weil Bambuddy einzelne Abbuchungen nicht ändern kann.
+- **Abbuchung korrigieren**: im Reiter Verbrauch bei jedem Druck „✎ Korrigieren“. Gramm pro Rolle ändern oder eine Rolle nachtragen, die nicht abgebucht wurde. Die Differenz wird sofort bei der Rolle verbucht, korrigierte Werte sind mit ✎ markiert. Die Korrekturen speichert die App selbst, weil Bambuddy einzelne Abbuchungen nicht ändern kann. Die neue Summe des Drucks schreibt die App zusätzlich ins Bambuddy-Archiv (API-Schlüssel mit „Archive verwalten“). Ist der Druck dort schon gelöscht, gibt es nur einen Hinweis.
+- **Icons**: einheitliche Linien-Icons. Rollen im Drucker zeigen das Bild deines Druckermodells aus Bambuddy. Im Reiter **Lagerplätze** wählst du pro Lagerplatz ein Icon (Regal, Trockner, Kiste, Schublade, Schrank, Beutel) oder trägst ein Icon aus Home Assistant ein, z. B. `mdi:fridge` (mit Vorschlägen beim Tippen), oder lädst ein eigenes Bild hoch. Ohne Auswahl gilt das Regal, ohne Druckerbild das Drucker-Icon.
 - **Preise**: Preis pro kg je Sorte, daraus Wert pro Rolle und Lagerwert.
 - **RFID-Abgleich**: Steckst du eine Bambu-Rolle mit Chip ins AMS, die du vorher schon im Lager erfasst hast, ordnet die App den Chip dieser Lager-Rolle zu. Nichts wird doppelt gezählt.
 - **Bearbeiten und Ausbuchen**: fehlende Angaben nachtragen, Farben korrigieren, eine zu viel erfasste Rolle wieder ausbuchen (wird in Bambuddy archiviert, nicht gelöscht).
@@ -60,9 +61,9 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 |---|---|
 | ![Einlegen](images/einlegen.png) | ![Rollen](images/rollen.png) |
 
-| Verbrauch | |
+| Verbrauch | Lagerplätze mit eigenem Icon |
 |---|---|
-| ![Verbrauch](images/verbrauch.png) | |
+| ![Verbrauch](images/verbrauch.png) | ![Lagerplätze](images/lagerplaetze.png) |
 
 | Benutzer | Auf dem Handy |
 |---|---|
@@ -155,4 +156,4 @@ Alle Daten bleiben bei dir: Rollen, Einkaufsliste und Lagerplätze liegen in Bam
 
 ## Lizenz
 
-[MIT](LICENSE)
+[MIT](LICENSE). Die Material Design Icons (`mdi:`) stammen von [Pictogrammers](https://pictogrammers.com/library/mdi/) und stehen unter der Apache-Lizenz 2.0; sie werden beim Bauen der App geladen.

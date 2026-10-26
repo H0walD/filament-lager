@@ -31,6 +31,12 @@ Neue Rollen zuerst in Filament-Lager erfassen, dann ins AMS stecken. Die App ord
 
 Damit Bambuddy den Verbrauch abzieht, muss die Rolle einem AMS-Platz zugeordnet sein. Dafür bei der Sorte auf „🖨“ tippen. Steckt eine Rolle ohne Zuordnung im Drucker, zeigt die App oben einen Hinweis. Der API-Schlüssel braucht dafür zusätzlich das Recht „Status lesen“ (in Bambuddy standardmäßig an).
 
+## Abbuchung korrigieren
+
+Im Reiter Verbrauch lässt sich bei jedem Druck die abgebuchte Menge ändern. Die Differenz wird bei der Rolle verbucht, und die neue Summe des Drucks geht auch ins Bambuddy-Archiv. Dafür braucht der API-Schlüssel das Recht „Archive verwalten“ (in Bambuddy standardmäßig an). Ist der Druck im Archiv schon gelöscht, wird nur die Rolle korrigiert und die App zeigt einen Hinweis.
+
+Bambuddys Statistikseite übernimmt den Archivwert nur, wenn beim Druck nichts gemessen wurde. Hat Bambuddy selbst einen Verbrauch gemessen, behält die Statistik diesen.
+
 ## Hilfe
 
 Ausführliche Anleitung mit Bildern: siehe README im GitHub-Repository.

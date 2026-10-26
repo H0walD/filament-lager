@@ -21,6 +21,7 @@
     <button class="tab" data-tab="shop">Einkaufsliste <span id="shopCount" class="pill"></span></button>
     <button class="tab" data-tab="usage">Verbrauch</button>
     <button class="tab" data-tab="brands">Hersteller <span id="brandCount" class="pill"></span></button>
+    <button class="tab" data-tab="places">Lagerplätze</button>
     <button class="tab need-admin" data-tab="users">Benutzer</button>
   </nav>
 </header>
@@ -80,6 +81,13 @@
     <div id="brandGrid" class="brandGrid"></div>
   </section>
 
+  <section id="tab-places" class="hidden">
+    <div class="toolbar">
+      <span class="muted">Wähle für jeden Lagerplatz ein Icon oder lade ein eigenes Bild hoch. Ohne Auswahl gilt das Regal. Drucker zeigen automatisch ihr Bild aus Bambuddy.</span>
+    </div>
+    <div id="placeGrid" class="brandGrid"></div>
+  </section>
+
   <section id="tab-users" class="hidden">
     <div class="toolbar"><span class="muted">Rechte stellst du in Home Assistant ein: <b>Einstellungen → Apps → Filament-Lager → Konfiguration</b>, Feld <b>benutzer</b>. Als Name den Benutzernamen von hier eintragen. Wer nicht eingetragen ist, bekommt das <b>standard_recht</b>.</span></div>
     <div id="userList"></div>
@@ -118,6 +126,26 @@
     <div class="actions">
       <button value="cancel" formnovalidate>Abbrechen</button>
       <button value="ok" class="primary">Ins Lager</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="placeDialog">
+  <form id="placeForm" method="dialog">
+    <h2>Icon für <span id="placeName"></span></h2>
+    <div id="placeChoices" class="iconChoices"></div>
+    <div class="mdiRow">
+      <label>Oder Icon aus Home Assistant (MDI), z. B. mdi:fridge<input name="mdi" list="mdiList" autocomplete="off" spellcheck="false" placeholder="mdi:…"></label>
+      <span id="mdiPreview" class="mdiPreview"></span>
+    </div>
+    <datalist id="mdiList"></datalist>
+    <div class="brandPreview"><span id="placeImagePreview"></span></div>
+    <label>Oder eigenes Bild (PNG, JPG, WebP), ersetzt das Icon<input name="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+    <label id="placeRemoveRow" class="removeLogoRow"><span><input name="removeImage" type="checkbox"> Eigenes Bild entfernen</span></label>
+    <p id="placeError" class="error"></p>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Abbrechen</button>
+      <button value="ok" class="primary">Speichern</button>
     </div>
   </form>
 </dialog>

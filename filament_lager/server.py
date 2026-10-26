@@ -11,8 +11,9 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote
 
 OPTIONS_FILE = "/data/options.json"
 DATA_DIR = "/data"
@@ -50,6 +51,51 @@ def save_brands(brands):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(brands, f, ensure_ascii=False, indent=1)
     os.replace(tmp, BRANDS_FILE)
+
+
+PLACES_FILE = os.path.join(DATA_DIR, "places.json")
+PLACE_ICONS = ("shelf", "dryer", "box", "drawer", "cabinet", "bag")
+
+
+MDI_FILE = os.environ.get("MDI_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "mdi.json")
+MDI = None
+
+
+def load_mdi():
+    # Material Design Icons, beim Bauen der App aus @mdi/svg erzeugt (Name → SVG-Pfad).
+    global MDI
+    if MDI is None:
+        try:
+            with open(MDI_FILE, encoding="utf-8") as f:
+                MDI = json.load(f)
+        except (OSError, ValueError):
+            MDI = {}
+    return MDI
+
+
+def mdi_search(q):
+    q = re.sub(r"^mdi:", "", (q or "").strip().lower())
+    if not q:
+        return []
+    names = load_mdi().keys()
+    starts = [n for n in names if n.startswith(q)]
+    contains = [n for n in names if q in n and not n.startswith(q)]
+    return ["mdi:" + n for n in (sorted(starts, key=len) + sorted(contains, key=len))[:40]]
+
+
+def load_places():
+    try:
+        with open(PLACES_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_places(places):
+    tmp = PLACES_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(places, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, PLACES_FILE)
 
 
 def logo_paths(key):
@@ -147,7 +193,7 @@ def current_user(headers):
 
 def required_level(method, path):
     # Seite, Skripte und Icon darf jeder laden, damit „Kein Zugriff“ angezeigt werden kann.
-    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/printers", "/usage-edits"))):
+    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/printers", "/printer-image/", "/usage-edits", "/places", "/place-image/", "/mdi"))):
         return NONE
     if path.startswith("/users"):
         return ADMIN
@@ -188,7 +234,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        if "Cache-Control" not in (extra or {}):
+            self.send_header("Cache-Control", "no-store")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -224,6 +271,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reconcile()
             if path == "/usage-edits":
                 return self.usage_edits()
+            if path == "/archive-sync" and self.command == "POST":
+                return self.send(200, sync_archive(json.loads(self.read_body() or b"{}")))
+            if path.startswith("/mdi/") and path.endswith(".svg"):
+                return self.mdi_svg(path[len("/mdi/"):-4])
+            if path == "/mdi-search":
+                return self.send(200, mdi_search(parse_qs(query.lstrip("?")).get("q", [""])[0]))
+            if path == "/places":
+                return self.send(200, load_places())
+            if path.startswith("/places/"):
+                return self.place_settings(path[len("/places/"):])
+            if path.startswith("/place-image/"):
+                return self.place_image(path[len("/place-image/"):])
+            if path.startswith("/printer-image/"):
+                return self.printer_image(path[len("/printer-image/"):])
             if path == "/printers":
                 return self.send(200, printer_slots())
             if path == "/brands":
@@ -308,6 +369,82 @@ class Handler(BaseHTTPRequestHandler):
         except (urllib.error.URLError, OSError):
             return self.send(502, {"detail": "Bambuddy nicht erreichbar"})
         return self.send(200, result)
+
+    def place_settings(self, pid):
+        # Icon eines Lagerplatzes aus Bambuddy (Schlüssel ist dessen ID).
+        if self.command != "PUT" or not pid.isdigit():
+            return self.send(405, {"detail": "Methode nicht erlaubt"})
+        icon = (json.loads(self.read_body() or b"{}") or {}).get("icon") or ""
+        if icon.startswith("mdi:"):
+            if icon[4:] not in load_mdi():
+                return self.send(400, {"detail": f"Das Icon {icon} gibt es nicht"})
+        elif icon and icon not in PLACE_ICONS:
+            return self.send(400, {"detail": "Unbekanntes Icon"})
+        places = load_places()
+        entry = places.setdefault(pid, {})
+        if icon:
+            entry["icon"] = icon
+        else:
+            entry.pop("icon", None)
+        save_places(places)
+        return self.send(200, places)
+
+    def place_image(self, pid):
+        if not pid.isdigit():
+            return self.send(404, {"detail": "Kein Bild"})
+        key = "place-" + pid
+        if self.command == "GET":
+            info = read_logo(key)
+            if not info or "body" not in info:
+                return self.send(404, {"detail": "Kein Bild"})
+            return self.send(200, info["body"], info["type"], {"Cache-Control": "max-age=3600"})
+        places = load_places()
+        if self.command in ("POST", "PUT"):
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0]
+            # Kein SVG: das könnte Skripte enthalten und liefe im Kontext der App.
+            if ctype not in ("image/png", "image/jpeg", "image/webp", "image/gif"):
+                return self.send(400, {"detail": "Bitte ein PNG-, JPG-, WebP- oder GIF-Bild hochladen"})
+            write_logo(key, ctype, self.read_body(), "upload")
+            places.setdefault(pid, {})["image"] = time.time()
+        elif self.command == "DELETE":
+            for p in logo_paths(key):
+                if os.path.exists(p):
+                    os.remove(p)
+            places.setdefault(pid, {}).pop("image", None)
+        else:
+            return self.send(405, {"detail": "Methode nicht erlaubt"})
+        save_places(places)
+        return self.send(200, places)
+
+    def mdi_svg(self, name):
+        path = load_mdi().get(name)
+        if not path:
+            return self.send(404, {"detail": "Icon nicht gefunden"})
+        svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="{path}"/></svg>'
+        self.send(200, svg, "image/svg+xml", {"Cache-Control": "max-age=604800"})
+
+    def printer_image(self, pid):
+        # Druckerbild direkt von Bambuddy holen (nicht mitgeliefert), im Speicher zwischenspeichern.
+        model = PRINTER_MODELS.get(pid)
+        if model is None:
+            try:
+                for p in bambuddy("GET", "printers/") or []:
+                    PRINTER_MODELS[str(p.get("id"))] = p.get("model") or ""
+            except (urllib.error.URLError, OSError, ValueError):
+                pass
+            model = PRINTER_MODELS.get(pid, "")
+        name = printer_image_name(model)
+        if name not in PRINTER_IMAGES:
+            base = (load_options().get("bambuddy_url") or DEFAULT_BAMBUDDY).rstrip("/")
+            try:
+                with urllib.request.urlopen(f"{base}/img/printers/{name}.png", timeout=10) as resp:
+                    data = resp.read()
+                if not data.startswith(b"\x89PNG"):
+                    raise ValueError("kein Bild")
+                PRINTER_IMAGES[name] = data
+            except (urllib.error.URLError, OSError, ValueError):
+                return self.send(404, {"detail": "Kein Druckerbild"})
+        self.send(200, PRINTER_IMAGES[name], "image/png", {"Cache-Control": "max-age=86400"})
 
     def save_theme(self):
         # Hell/Dunkel je Home-Assistant-Benutzer merken, damit es auf allen Geräten gleich ist.
@@ -561,6 +698,87 @@ def apply_usage_edit(req):
     return data
 
 
+def parse_time(value):
+    """Zeit aus Bambuddy als naive UTC-Zeit (Bambuddy liefert teils mit, teils ohne Zeitzone)."""
+    try:
+        t = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return t.astimezone(timezone.utc).replace(tzinfo=None) if t.tzinfo else t
+
+
+def find_archive(job):
+    """Archiveintrag zum Druck suchen: gleicher Drucker, fertig um dieselbe Zeit wie die Abbuchung."""
+    when = parse_time(job.get("created_at"))
+    if not when:
+        return None
+    query = f"date_from={(when.date() - timedelta(days=1)).isoformat()}&date_to={(when.date() + timedelta(days=1)).isoformat()}&limit=200"
+    if job.get("printer_id") is not None:
+        query += f"&printer_id={int(job['printer_id'])}"
+    name = (job.get("print_name") or "").strip().lower()
+    best = None
+    for a in bambuddy("GET", f"archives/?{query}") or []:
+        if job.get("printer_id") is not None and a.get("printer_id") not in (None, job["printer_id"]):
+            continue
+        done = parse_time(a.get("completed_at") or a.get("started_at") or a.get("created_at"))
+        if not done:
+            continue
+        gap = abs((done - when).total_seconds())
+        same_name = name and (a.get("print_name") or "").strip().lower() == name
+        # Abbuchung und Archiv entstehen beim Druckende; mit gleichem Namen darf es etwas mehr Abstand sein.
+        if gap > (3 * 3600 if same_name else 15 * 60):
+            continue
+        score = gap - (3600 if same_name else 0)
+        if best is None or score < best[0]:
+            best = (score, a)
+    return best[1] if best else None
+
+
+def sync_archive(req):
+    """Korrigierte Menge eines Drucks in Bambuddys Archiv schreiben.
+
+    Liefert immer eine Antwort mit Status statt eines Fehlers: Die Rolle ist zu diesem Zeitpunkt schon korrigiert,
+    das Archiv ist nur eine Ergänzung.
+    """
+    job = req.get("job") or {}
+    try:
+        grams = round(float(req.get("grams")), 1)
+    except (TypeError, ValueError):
+        return {"status": "invalid", "message": "Ungültige Menge, Archiv nicht geändert"}
+    try:
+        archive = find_archive(job)
+        if not archive:
+            return {"status": "missing", "message": "Druck nicht mehr im Bambuddy-Archiv, dort nichts geändert"}
+        payload = {"filament_used_grams": grams}
+        if req.get("cost") is not None:
+            payload["cost"] = round(float(req["cost"]), 2)
+        bambuddy("PATCH", f"archives/{archive['id']}", payload)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return {"status": "missing", "message": "Druck nicht mehr im Bambuddy-Archiv, dort nichts geändert"}
+        if e.code in (401, 403):
+            return {"status": "forbidden", "message": "Der API-Schlüssel darf das Bambuddy-Archiv nicht ändern („Archive verwalten“ fehlt)"}
+        return {"status": "failed", "message": f"Bambuddy-Archiv nicht aktualisiert (Fehler {e.code})"}
+    except (urllib.error.URLError, OSError, ValueError):
+        return {"status": "offline", "message": "Bambuddy nicht erreichbar, Archiv nicht aktualisiert"}
+    return {"status": "ok", "archive_id": archive["id"], "message": "Auch im Bambuddy-Archiv korrigiert"}
+
+
+PRINTER_MODELS = {}
+PRINTER_IMAGES = {}
+
+
+def printer_image_name(model):
+    # Gleiche Zuordnung wie in Bambuddy (Modell → Bilddatei unter /img/printers/).
+    m = re.sub(r"\s+", "", (model or "").lower())
+    for keys, name in ((("x1e",), "x1e"), (("x1c", "x1carbon", "x1"), "x1c"), (("x2d",), "x2d"),
+                       (("h2dpro", "h2d-pro"), "h2dpro"), (("h2d",), "h2d"), (("h2c",), "h2c"), (("h2s",), "h2d"),
+                       (("p2s", "p1s"), "p1s"), (("p1p",), "p1p"), (("a2l",), "a2l"), (("a1mini",), "a1mini"), (("a1",), "a1")):
+        if any(k in m for k in keys):
+            return name
+    return {"n6": "x2d", "n9": "a2l"}.get(m, "default")
+
+
 def no_chip(value):
     # Rollen ohne Chip melden lauter Nullen statt einer Kennung.
     return not value or not value.strip("0")
@@ -600,7 +818,8 @@ def printer_slots():
     for p in printers:
         if not isinstance(p, dict) or "id" not in p:
             continue
-        entry = {"id": p["id"], "name": p.get("name") or f"Drucker {p['id']}", "connected": False, "slots": []}
+        PRINTER_MODELS[str(p["id"])] = p.get("model") or ""
+        entry = {"id": p["id"], "name": p.get("name") or f"Drucker {p['id']}", "model": p.get("model") or "", "connected": False, "slots": []}
         try:
             st = bambuddy("GET", f"printers/{p['id']}/status") or {}
         except (urllib.error.URLError, OSError, ValueError):

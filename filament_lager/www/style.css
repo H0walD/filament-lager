@@ -255,3 +255,29 @@ dialog.wide { width: min(620px, 96vw); }
 .jobEditRows { display: flex; flex-direction: column; gap: 8px; }
 .jobEditRow { display: flex; align-items: center; gap: 10px; }
 .jobEditRow .grow { flex: 1; min-width: 0; }
+/* Icons */
+.ic { width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.22em; }
+.tileMeta span, .rollHead .muted { display: inline-flex; align-items: center; gap: 6px; }
+.tileMeta .ic, .rollHead .ic { color: var(--muted); }
+.tileActions button, button.icon, .themeBtn, .jobEdit { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.tileActions .ic { width: 17px; height: 17px; }
+.siteLink { display: inline-flex; align-items: center; gap: 4px; }
+.pwrap { display: inline-flex; align-items: center; }
+.pimg { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
+.pwrap .pfb, .pwrap.noimg .pimg { display: none; }
+.pwrap.noimg .pfb { display: inline; }
+.editHint .ic { width: 12px; height: 12px; }
+.num .ic { width: 12px; height: 12px; }
+.iconChoices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.iconChoice { flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; color: var(--text); }
+.iconChoice input { position: absolute; opacity: 0; pointer-events: none; }
+.iconChoice .ic { width: 28px; height: 28px; }
+.iconChoice:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.placeBig .ic.big, .locimg.big { width: 48px; height: 48px; }
+.placeBig { color: var(--muted); display: flex; height: 56px; align-items: center; }
+.locimg { width: 1.15em; height: 1.15em; object-fit: contain; border-radius: 3px; vertical-align: -0.22em; }
+.ic.mdi { display: inline-block; background: currentColor; -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+.mdiRow { display: flex; align-items: flex-end; gap: 10px; }
+.mdiPreview { width: 48px; height: 40px; display: flex; align-items: center; justify-content: center; color: var(--text); }
+.mdiPreview .ic.big { width: 32px; height: 32px; }
+.iconChoices.dimmed { opacity: .45; }

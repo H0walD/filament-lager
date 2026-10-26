@@ -1,5 +1,26 @@
 # Änderungen
 
+## 1.3.9
+
+- Korrigierte Abbuchungen gehen auch ins Bambuddy-Archiv (Gramm und Materialkosten des Drucks)
+- Ist der Druck im Archiv schon gelöscht oder fehlt das Recht dafür, gibt es einen Hinweis statt eines Fehlers; die Rolle wird trotzdem korrigiert
+
+## 1.3.8
+
+- Lagerplatz-Icons auch als Material Design Icon wie in Home Assistant, z. B. `mdi:fridge`, mit Vorschlägen beim Tippen und Vorschau
+- Die Icons werden beim Installieren der App einmal mitgeladen, danach geht nichts mehr ins Internet
+
+## 1.3.7
+
+- Neuer Reiter „Lagerplätze“: pro Lagerplatz ein Icon wählen (Regal, Trockner, Kiste, Schublade, Schrank, Beutel) oder ein eigenes Bild hochladen; ohne Auswahl gilt das Regal
+- Lagerplätze werden nicht mehr am Namen erkannt
+
+## 1.3.6
+
+- Einheitliche Linien-Icons statt Emojis
+- Rollen im Drucker zeigen das Druckerbild aus Bambuddy
+- Lagerplätze mit Icon: Trockner (erkannt am Namen, z. B. „Chitu“, „Trockner“, „Dryer“) oder Regal
+
 ## 1.3.5
 
 - Abbuchung eines Drucks korrigieren („✎ Korrigieren“ im Reiter Verbrauch): Gramm pro Rolle ändern oder eine nicht abgebuchte Rolle nachtragen; die Differenz wird direkt bei der Rolle verbucht
