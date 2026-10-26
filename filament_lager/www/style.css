@@ -251,3 +251,7 @@ dialog.wide { width: min(620px, 96vw); }
   .jobRow { grid-template-columns: 22px minmax(0, 1fr) 58px 62px 58px; gap: 6px; font-size: 13px; }
   .jobRow .usageRoll .muted { display: none; }
 }
+.jobEdit { font-size: 12px; padding: 3px 8px; }
+.jobEditRows { display: flex; flex-direction: column; gap: 8px; }
+.jobEditRow { display: flex; align-items: center; gap: 10px; }
+.jobEditRow .grow { flex: 1; min-width: 0; }

@@ -197,17 +197,21 @@ async function load(quiet) {
   }
   if (!can(VIEW)) return;
   try {
-    const [spools, shop, rec, slots, brands, locations, usage, printers] = await Promise.all([api("api/inventory/spools?include_archived=true"),
+    const [spools, shop, rec, slots, brands, locations, rawUsage, printers, edits] = await Promise.all([api("api/inventory/spools?include_archived=true"),
       api("api/inventory/shopping-list"), api("reconcile").catch(() => null), api("api/inventory/assignments").catch(() => []),
       api("brands").catch(() => ({})), api("api/inventory/locations").catch(() => []),
-      api("api/inventory/usage?limit=500").catch(() => []), api("printers").catch(() => null)]);
+      api("api/inventory/usage?limit=500").catch(() => []), api("printers").catch(() => null),
+      api("usage-edits").catch(() => null)]);
     state.brands = brands;
     state.locations = new Map((Array.isArray(locations) ? locations : []).map((l) => [l.id, l.name]));
     state.locationList = Array.isArray(locations) ? locations : [];
     // Letzte Nutzung je Rolle aus dem Verbrauchsverlauf, falls Bambuddy last_used nicht setzt.
+    state.allSpools = new Map((Array.isArray(spools) ? spools : []).map((s) => [s.id, s]));
+    const usage = mergeUsage(Array.isArray(rawUsage) ? rawUsage : [], edits || { edits: {}, manual: [] });
+    state.usageList = usage;
     state.lastUse = new Map();
     state.usage = new Map();
-    for (const u of Array.isArray(usage) ? usage : []) {
+    for (const u of usage) {
       if (!state.lastUse.has(u.spool_id) || state.lastUse.get(u.spool_id) < u.created_at) state.lastUse.set(u.spool_id, u.created_at);
       if (!state.usage.has(u.spool_id)) state.usage.set(u.spool_id, []);
       state.usage.get(u.spool_id).push(u);
@@ -222,8 +226,6 @@ async function load(quiet) {
       state.currency = printers.currency || state.currency || "";
     }
     // Ausgebuchte Rollen nur für den Verbrauchsverlauf behalten.
-    state.allSpools = new Map((Array.isArray(spools) ? spools : []).map((s) => [s.id, s]));
-    state.usageList = Array.isArray(usage) ? usage : [];
     state.spools = (Array.isArray(spools) ? spools : []).filter((s) => !s.archived_at);
     state.shop = Array.isArray(shop) ? shop : [];
     state.reconcile = rec || { merged: [], unclear: [] };
@@ -1003,7 +1005,8 @@ function renderUsage() {
     return `<div class="jobCard">
       <div class="jobHead"><b>${esc(j.print_name || "Druck")}</b>${status}
         <span class="muted">${fmtDateTime(j.created_at)}${printerName(j.printer_id) ? " · " + esc(printerName(j.printer_id)) : ""}</span>
-        <span class="jobTotal"><b>−${Math.round(grams)} g</b>${cost ? ` <span class="muted">${money(cost)}</span>` : ""}</span></div>
+        <span class="jobTotal"><b>−${Math.round(grams)} g</b>${cost ? ` <span class="muted">${money(cost)}</span>` : ""}</span>
+        <button type="button" class="need-edit jobEdit" data-act="editJob" data-job="${esc(j.key)}" title="Abbuchung korrigieren">✎ Korrigieren</button></div>
       <div class="jobRows">
         <div class="jobRow jobLabels muted"><span></span><span>Rolle</span><span>vorher</span><span>abgebucht</span><span>danach</span></div>
         ${j.items.map((u) => {
@@ -1011,7 +1014,7 @@ function renderUsage() {
           return `<div class="jobRow">${dot(s?.rgba)}
             <span class="usageRoll"><b>${esc(s?.color_name || "Unbekannte Rolle")}</b> <span class="muted">${esc(s ? [s.brand, s.material, s.subtype].filter(Boolean).join(" ") : "")} · Rolle ${u.spool_id}${s?.archived_at ? " · ausgebucht" : ""}</span></span>
             <span class="num">${u.before == null ? "–" : Math.round(u.before) + " g"}</span>
-            <span class="num minus">−${Math.round(u.weight_used)} g</span>
+            <span class="num minus" title="${u.edited ? (u.manual ? "von Hand nachgetragen" : `korrigiert, Bambuddy hatte ${Math.round(u.original)} g`) : ""}">−${Math.round(u.weight_used)} g${u.edited ? " ✎" : ""}</span>
             <span class="num"><b>${u.after == null ? "–" : Math.round(u.after) + " g"}</b></span></div>`;
         }).join("")}
       </div></div>`;
@@ -1022,7 +1025,7 @@ function renderUsage() {
 // Restgewicht der Rolle rückwärts: danach = Rest heute + alles, was später abgebucht wurde.
 function rollHistory() {
   const map = new Map();
-  const sorted = [...(state.usageList || [])].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "") || b.id - a.id);
+  const sorted = [...(state.usageList || [])].sort((a, b) => (b.created_at || "").localeCompare(a.created_at || "") || String(b.id).localeCompare(String(a.id), "de", { numeric: true }));
   const running = new Map();
   for (const u of sorted) {
     const s = state.allSpools?.get(u.spool_id);
@@ -1040,16 +1043,93 @@ function usageJobs(list) {
   const hist = rollHistory();
   const jobs = new Map();
   for (const u of list) {
-    const key = [u.print_name || "", u.printer_id ?? "", (u.created_at || "").slice(0, 16)].join("|");
-    if (!jobs.has(key)) jobs.set(key, { print_name: u.print_name, printer_id: u.printer_id, created_at: u.created_at, status: u.status, items: [] });
+    const key = jobKey(u);
+    if (!jobs.has(key)) jobs.set(key, { key, print_name: u.print_name, printer_id: u.printer_id, created_at: u.created_at, status: u.status, items: [] });
     const h = hist.get(u.id) || {};
     jobs.get(key).items.push({ ...u, before: h.before, after: h.after });
   }
+  state.jobs = jobs;
   return [...jobs.values()];
+}
+
+const jobKey = (u) => [u.print_name || "", u.printer_id ?? "", (u.created_at || "").slice(0, 16)].join("|");
+
+// Korrekturen aus dem Filament-Lager über die Bambuddy-Abbuchungen legen.
+function mergeUsage(raw, edits) {
+  const costOf = (spoolId, grams, orig) => {
+    const s = state.allSpools?.get(spoolId);
+    if (s?.cost_per_kg) return grams / 1000 * s.cost_per_kg;
+    return orig && orig.weight_used ? (orig.cost || 0) * grams / orig.weight_used : 0;
+  };
+  const list = raw.map((u) => {
+    const fixed = edits.edits?.[String(u.id)];
+    return fixed == null ? { ...u, original: u.weight_used }
+      : { ...u, original: u.weight_used, weight_used: fixed, cost: costOf(u.spool_id, fixed, u), edited: true };
+  });
+  for (const m of edits.manual || []) {
+    list.push({ id: m.id, spool_id: m.spool_id, weight_used: m.grams, print_name: m.print_name, printer_id: m.printer_id,
+      created_at: m.created_at, status: m.status, cost: costOf(m.spool_id, m.grams), manual: true, edited: true });
+  }
+  return list;
 }
 
 $("#usagePeriod").addEventListener("change", renderUsage);
 $("#usageSearch").addEventListener("input", renderUsage);
+
+// ---------- Abbuchung eines Drucks korrigieren ----------
+
+let editJob = null;
+
+function openJobEdit(job) {
+  editJob = job;
+  $("#jobTitle").textContent = `${job.print_name || "Druck"} · ${fmtDateTime(job.created_at)}`;
+  $("#jobRows").innerHTML = job.items.map((u, i) => `<div class="jobEditRow">${dot(u.spool?.rgba)}
+      <span class="grow">${esc(u.spool ? rollName(u.spool) : "Unbekannte Rolle")} · Rolle ${u.spool_id}${u.edited && !u.manual ? `<div class="muted">Bambuddy: ${Math.round(u.original)} g</div>` : ""}${u.manual ? `<div class="muted">von Hand nachgetragen</div>` : ""}</span>
+      <label class="narrow">Gramm<input type="number" min="0" max="5000" step="0.1" data-item="${i}" value="${Math.round(u.weight_used * 10) / 10}"></label></div>`).join("");
+  const used = new Set(job.items.map((u) => u.spool_id));
+  const rolls = preferredRoll(state.spools.filter((s) => !used.has(s.id)));
+  $("#jobForm").addRoll.innerHTML = `<option value="">— keine —</option>` + rolls.map(rollOption).join("");
+  $("#jobForm").addGrams.value = "";
+  $("#jobError").textContent = "";
+  $("#jobDialog").showModal();
+}
+
+$("#jobForm").addEventListener("submit", async (ev) => {
+  if (ev.submitter?.value !== "ok") return;
+  ev.preventDefault();
+  const f = ev.target;
+  const changes = [];
+  f.querySelectorAll("input[data-item]").forEach((inp) => {
+    const u = editJob.items[parseInt(inp.dataset.item, 10)];
+    const grams = parseFloat(String(inp.value).replace(",", "."));
+    if (!(grams >= 0) || Math.abs(grams - u.weight_used) < 0.05) return;
+    changes.push({ u, grams, body: u.manual ? { manual_id: u.id, grams } : { usage_id: u.id, spool_id: u.spool_id, grams } });
+  });
+  const addId = parseInt(f.addRoll.value, 10);
+  const addGrams = parseFloat(String(f.addGrams.value).replace(",", "."));
+  if (addId && addGrams > 0) {
+    const s = state.spools.find((x) => x.id === addId);
+    changes.push({ u: { spool: s, spool_id: addId, weight_used: 0 }, grams: addGrams,
+      body: { spool_id: addId, grams: addGrams, job: { print_name: editJob.print_name, printer_id: editJob.printer_id, created_at: editJob.created_at, status: editJob.status } } });
+  }
+  if (!changes.length) return $("#jobDialog").close();
+  const rows = changes.map(({ u, grams }) => {
+    const diff = grams - u.weight_used;
+    return `<div class="confirmLine">${dot(u.spool?.rgba)}<span><b>${esc(u.spool ? rollName(u.spool) : "Rolle " + u.spool_id)}</b> · ${Math.round(u.weight_used)} g → <b>${Math.round(grams)} g</b>
+      <span class="muted">(${diff > 0 ? "Rolle −" + Math.round(diff) + " g" : "Rolle +" + Math.round(-diff) + " g zurück"})</span></span></div>`;
+  }).join("");
+  const ok = await askConfirm("Abbuchung korrigieren", rows + `<p class="confirmNote">Die Differenz wird direkt bei der Rolle verbucht, damit der Lagerbestand stimmt.</p>`, "Speichern");
+  if (!ok) return;
+  try {
+    for (const c of changes) await api("usage-edits", { method: "POST", body: JSON.stringify(c.body) });
+    $("#jobDialog").close();
+    toast("Abbuchung korrigiert");
+    await load(true);
+  } catch (e) {
+    $("#jobError").textContent = "Konnte nicht speichern: " + e.message;
+    await load(true);
+  }
+});
 
 // ---------- Drucker: Rollen einlegen, herausnehmen, nicht zugeordnete Plätze ----------
 
@@ -1291,6 +1371,10 @@ document.addEventListener("click", (ev) => {
   if (act === "saveWeight" && s) run(() => saveWeight(s));
   else if (act === "unload" && s) run(() => unloadRoll(s));
   else if (act === "loadRoll" && s) openLoad({ spool: s });
+  else if (act === "editJob") {
+    const job = state.jobs?.get(btn.dataset.job);
+    if (job) openJobEdit(job);
+  }
   else if (act === "assignSlot") {
     const slot = slotByKey(btn.dataset.slot);
     if (slot) openLoad({ slot });

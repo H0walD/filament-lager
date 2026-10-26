@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.3.5
+
+- Abbuchung eines Drucks korrigieren („✎ Korrigieren“ im Reiter Verbrauch): Gramm pro Rolle ändern oder eine nicht abgebuchte Rolle nachtragen; die Differenz wird direkt bei der Rolle verbucht
+
 ## 1.3.4
 
 - Verbrauch nach Druckauftrag: pro Rolle Gewicht vorher, abgebucht und danach

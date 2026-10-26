@@ -147,7 +147,7 @@ def current_user(headers):
 
 def required_level(method, path):
     # Seite, Skripte und Icon darf jeder laden, damit „Kein Zugriff“ angezeigt werden kann.
-    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/printers"))):
+    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/printers", "/usage-edits"))):
         return NONE
     if path.startswith("/users"):
         return ADMIN
@@ -222,6 +222,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.status()
             if path == "/reconcile":
                 return self.reconcile()
+            if path == "/usage-edits":
+                return self.usage_edits()
             if path == "/printers":
                 return self.send(200, printer_slots())
             if path == "/brands":
@@ -289,6 +291,23 @@ class Handler(BaseHTTPRequestHandler):
             self.command, rel, body or None, self.headers.get("Content-Type")
         )
         self.send(status, data, ctype)
+
+    def usage_edits(self):
+        if self.command == "GET":
+            return self.send(200, load_usage_edits())
+        if self.command != "POST":
+            return self.send(405, {"detail": "Methode nicht erlaubt"})
+        req = json.loads(self.read_body() or b"{}")
+        try:
+            with USAGE_LOCK:
+                result = apply_usage_edit(req)
+        except LookupError as e:
+            return self.send(404, {"detail": str(e)})
+        except (ValueError, TypeError) as e:
+            return self.send(400, {"detail": str(e) or "Ungültige Angabe"})
+        except (urllib.error.URLError, OSError):
+            return self.send(502, {"detail": "Bambuddy nicht erreichbar"})
+        return self.send(200, result)
 
     def save_theme(self):
         # Hell/Dunkel je Home-Assistant-Benutzer merken, damit es auf allen Geräten gleich ist.
@@ -461,6 +480,85 @@ def bambuddy(method, rel, payload=None):
     with urllib.request.urlopen(req, timeout=15) as resp:
         raw = resp.read()
     return json.loads(raw) if raw else None
+
+
+USAGE_EDITS_FILE = os.path.join(DATA_DIR, "usage_edits.json")
+USAGE_LOCK = threading.Lock()
+
+
+def load_usage_edits():
+    try:
+        with open(USAGE_EDITS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    data.setdefault("edits", {})
+    data.setdefault("manual", [])
+    return data
+
+
+def save_usage_edits(data):
+    tmp = USAGE_EDITS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, USAGE_EDITS_FILE)
+
+
+def adjust_spool(spool_id, diff):
+    """Mehr oder weniger Verbrauch bei der Rolle verbuchen, damit der Lagerbestand stimmt."""
+    if not diff:
+        return
+    spool = bambuddy("GET", f"inventory/spools/{spool_id}")
+    used = max(0.0, round((spool.get("weight_used") or 0) + diff, 1))
+    bambuddy("PATCH", f"inventory/spools/{spool_id}", {"weight_used": used})
+
+
+def apply_usage_edit(req):
+    """Abbuchung eines Drucks korrigieren.
+
+    Bambuddy kann einzelne Abbuchungen nicht ändern. Die korrigierte Menge wird deshalb hier gespeichert
+    und nur die Differenz bei der Rolle abgezogen oder gutgeschrieben.
+    """
+    data = load_usage_edits()
+    grams = float(req.get("grams"))
+    if grams < 0 or grams > 5000:
+        raise ValueError("Bitte eine Menge zwischen 0 und 5000 g eingeben")
+    grams = round(grams, 1)
+    if req.get("usage_id") is not None:
+        uid, spool_id = int(req["usage_id"]), int(req["spool_id"])
+        history = bambuddy("GET", f"inventory/spools/{spool_id}/usage?limit=500") or []
+        entry = next((u for u in history if u.get("id") == uid), None)
+        if not entry:
+            raise LookupError("Abbuchung nicht gefunden")
+        before = data["edits"].get(str(uid), entry.get("weight_used") or 0)
+        adjust_spool(spool_id, grams - before)
+        if abs(grams - (entry.get("weight_used") or 0)) < 0.05:
+            data["edits"].pop(str(uid), None)
+        else:
+            data["edits"][str(uid)] = grams
+    elif req.get("manual_id"):
+        entry = next((m for m in data["manual"] if m["id"] == req["manual_id"]), None)
+        if not entry:
+            raise LookupError("Abbuchung nicht gefunden")
+        adjust_spool(entry["spool_id"], grams - entry["grams"])
+        if grams == 0:
+            data["manual"].remove(entry)
+        else:
+            entry["grams"] = grams
+    else:
+        # Rolle, die beim Druck dabei war, aber nicht abgebucht wurde (z. B. ohne Chip und ohne Zuordnung).
+        spool_id = int(req["spool_id"])
+        job = req.get("job") or {}
+        if not grams:
+            raise ValueError("Bitte eine Menge eingeben")
+        adjust_spool(spool_id, grams)
+        data["manual"].append({
+            "id": "m%d" % int(time.time() * 1000), "spool_id": spool_id, "grams": grams,
+            "print_name": job.get("print_name"), "printer_id": job.get("printer_id"),
+            "created_at": job.get("created_at"), "status": job.get("status") or "completed",
+        })
+    save_usage_edits(data)
+    return data
 
 
 def no_chip(value):
