@@ -915,16 +915,10 @@ function sameSort(g, s) {
 }
 
 function similarSorts(s) {
-  // Gleiche Sorte oder sehr ähnliche: gleicher Hersteller und Material, dazu gleicher Farbname oder fast gleiche Farbe.
-  if (!s.brand || !s.material) return [];
-  return state.groups.filter((g) => {
-    const brandMatch = squash(g.brand).startsWith(squash(s.brand)) || squash(s.brand).startsWith(squash(g.brand));
-    if (!brandMatch || squash(g.material) !== squash(s.material)) return false;
-    if (sameSort(g, s)) return true;
-    const nameMatch = s.color_name && (squash(g.color_name) === squash(s.color_name));
-    const colorMatch = s.color_touched && hexDistance(g.rgba, s.rgba) < 40;
-    return nameMatch || colorMatch;
-  }).slice(0, 4);
+  // Nur echte Doppel: gleicher Hersteller, Material, Typ und Farbname (Schreibweise egal).
+  // Eine ähnliche Farbe allein ist kein Doppel, z. B. Grey und Silver vom selben Hersteller.
+  if (!s.brand || !s.material || !s.color_name) return [];
+  return state.groups.filter((g) => sameSort(g, s)).slice(0, 4);
 }
 
 function updateDupHint() {
@@ -933,8 +927,7 @@ function updateDupHint() {
   const hits = similarSorts(s);
   const box = $("#dupHint");
   if (!hits.length) return box.classList.add("hidden");
-  const exact = hits.find((g) => sameSort(g, s));
-  box.innerHTML = `<b>${exact ? "Diese Sorte gibt es schon:" : "Ähnliche Sorte im Lager, meinst du die?"}</b>` + hits.map((g) =>
+  box.innerHTML = `<b>Diese Sorte gibt es schon:</b>` + hits.map((g) =>
     `<div class="dupRow"><span class="swatch" style="background:${color(g)}"></span>
       <span class="grow">${esc(g.brand)} ${esc([g.material, g.subtype].filter(Boolean).join(" "))} <b style="color:inherit">${esc(g.color_name)}</b> · ${g.spools.length} ${g.spools.length === 1 ? "Rolle" : "Rollen"}</span>
       <button type="button" class="primary" data-dup="${esc(g.key)}">Hierzu buchen</button></div>`).join("");
@@ -1703,3 +1696,78 @@ async function loadUsers() {
 })();
 setInterval(() => { if (!document.hidden) load(true); }, REFRESH_MS);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) load(true); });
+
+// ---------- Auswahlliste beim Tippen ----------
+// Ersetzt die Browser-Liste (datalist), die sich weder vergrössern noch angenehm scrollen lässt.
+// Die Werte kommen weiterhin aus den datalist-Elementen, die renderLists() füllt.
+
+function setupCombo(input) {
+  const list = document.getElementById(input.getAttribute("list"));
+  if (!list) return;
+  input.removeAttribute("list");
+  const box = document.createElement("div");
+  box.className = "combo hidden";
+  box.setAttribute("role", "listbox");
+  (input.closest("dialog") || document.body).appendChild(box);
+  let items = [], active = -1;
+
+  const place = () => {
+    const r = input.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom - 12;
+    box.style.left = r.left + "px";
+    box.style.width = Math.max(r.width, 200) + "px";
+    box.style.maxHeight = Math.max(160, Math.min(320, below > 200 ? below : r.top - 12)) + "px";
+    if (below > 200 || below > r.top) { box.style.top = r.bottom + 4 + "px"; box.style.bottom = ""; }
+    else { box.style.top = ""; box.style.bottom = window.innerHeight - r.top + 4 + "px"; }
+  };
+  const close = () => { box.classList.add("hidden"); active = -1; };
+  const highlight = (i) => {
+    active = i;
+    box.querySelectorAll(".comboItem").forEach((el, n) => el.classList.toggle("active", n === i));
+    box.children[i]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
+  const show = () => {
+    const q = input.value.trim().toLowerCase();
+    const all = [...list.options].map((o) => o.value).filter(Boolean);
+    // Treffer am Anfang zuerst, danach Treffer irgendwo im Wort.
+    items = [...new Set([...all.filter((v) => v.toLowerCase().startsWith(q)), ...all.filter((v) => v.toLowerCase().includes(q))])];
+    if (items.length === 1 && items[0].toLowerCase() === q) items = [];
+    if (!items.length || document.activeElement !== input) return close();
+    box.innerHTML = items.map((v) => `<div class="comboItem" role="option">${esc(v)}</div>`).join("");
+    box.classList.remove("hidden");
+    place();
+    active = -1;
+  };
+  const pick = (v) => {
+    input.value = v;
+    close();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  input.addEventListener("focus", show);
+  input.addEventListener("input", (ev) => { if (ev.isTrusted) show(); });
+  input.addEventListener("blur", () => setTimeout(close, 150));
+  input.addEventListener("keydown", (ev) => {
+    if (box.classList.contains("hidden")) return;
+    if (ev.key === "ArrowDown") { ev.preventDefault(); highlight(Math.min(items.length - 1, active + 1)); }
+    else if (ev.key === "ArrowUp") { ev.preventDefault(); highlight(Math.max(0, active - 1)); }
+    else if (ev.key === "Enter" && active >= 0) { ev.preventDefault(); pick(items[active]); }
+    else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); close(); }
+  });
+  // mousedown statt click, damit das Feld den Fokus nicht vorher verliert.
+  box.addEventListener("mousedown", (ev) => {
+    const el = ev.target.closest(".comboItem");
+    if (!el) return;
+    ev.preventDefault();
+    pick(items[[...box.children].indexOf(el)]);
+  });
+  // Die MDI-Vorschläge kommen erst nach dem Tippen vom Server.
+  new MutationObserver(() => { if (document.activeElement === input) show(); }).observe(list, { childList: true });
+  const follow = () => { if (!box.classList.contains("hidden")) place(); };
+  window.addEventListener("resize", follow);
+  (input.closest("dialog") || window).addEventListener("scroll", follow, true);
+  input.closest("dialog")?.addEventListener("close", close);
+}
+
+document.querySelectorAll("input[list]").forEach(setupCombo);

@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.3.13
+
+- Hinweis „Diese Sorte gibt es schon“ nur noch bei gleichem Hersteller, Material, Typ und Farbname; eine ähnliche Farbe allein löst ihn nicht mehr aus
+- Eigene Auswahlliste beim Tippen (Hersteller, Material, Typ, MDI-Icons): grösser, weich scrollend, breitere Scrollbar, mit Pfeiltasten bedienbar
+- Lagerplatz-Fenster hat keine waagrechte Scrollbar mehr
+
 ## 1.3.12
 
 - Im Lager ist jeder Hersteller nach Material unterteilt, jeweils mit Überschrift und Anzahl Rollen

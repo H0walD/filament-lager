@@ -154,7 +154,7 @@ main { padding: 16px; max-width: 1300px; margin: 0 auto; }
 .status.purchased { background: #dbeafe; color: #1e3a8a; }
 .status.received { background: #dcfce7; color: #14532d; }
 .emptyState { text-align: center; color: var(--muted); padding: 40px 10px; }
-dialog { border: none; border-radius: 14px; padding: 0; background: var(--card); color: var(--text); width: min(460px, 94vw); }
+dialog { overflow-x: hidden; border: none; border-radius: 14px; padding: 0; background: var(--card); color: var(--text); width: min(460px, 94vw); }
 dialog::backdrop { background: rgba(0,0,0,.45); }
 dialog form { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
 dialog h2 { margin: 0 0 4px; font-size: 18px; }
@@ -305,7 +305,8 @@ dialog.wide { width: min(620px, 96vw); }
 .num .ic { width: 12px; height: 12px; }
 .iconChoices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .iconChoice { flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; color: var(--text); }
-.iconChoice input { position: absolute; opacity: 0; pointer-events: none; }
+.iconChoice { position: relative; }
+.iconChoice input { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; margin: 0; padding: 0; }
 .iconChoice .ic { width: 28px; height: 28px; }
 .iconChoice:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .placeBig .ic.big, .locimg.big { width: 48px; height: 48px; }
@@ -316,3 +317,15 @@ dialog.wide { width: min(620px, 96vw); }
 .mdiPreview { width: 48px; height: 40px; display: flex; align-items: center; justify-content: center; color: var(--text); }
 .mdiPreview .ic.big { width: 32px; height: 32px; }
 .iconChoices.dimmed { opacity: .45; }
+
+/* Auswahlliste beim Tippen: grösser, weich scrollend, breite Scrollbar */
+.combo {
+  position: fixed; z-index: 1000; overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch; background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.35); padding: 4px; scrollbar-width: auto; scrollbar-color: var(--muted) transparent;
+}
+.combo::-webkit-scrollbar { width: 12px; }
+.combo::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 6px; border: 3px solid var(--card); }
+.combo::-webkit-scrollbar-track { background: transparent; }
+.comboItem { padding: 10px 12px; border-radius: 7px; font-size: 15px; color: var(--text); cursor: pointer; }
+.comboItem:hover, .comboItem.active { background: var(--chip); }
