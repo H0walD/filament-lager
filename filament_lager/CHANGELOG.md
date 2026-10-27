@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.7.1
+
+- Rollenauswahl mit Farbpunkt beim Nachtragen, Umbuchen und Einlegen, auch in der aufgeklappten Liste
+- „Umbuchen auf“ steht jetzt in voller Breite unter der Rolle, auch auf dem Handy gut lesbar
+
 ## 1.7.0
 
 - Reiter Verbrauch: neuer Abschnitt „Drucke ohne Abbuchung“. Die App vergleicht Bambuddys Archiv der letzten 30 Tage mit den Abbuchungen und zeigt fertige oder abgebrochene Drucke, bei denen keine Rolle belastet wurde (z. B. weil keine Rolle zugeordnet war)

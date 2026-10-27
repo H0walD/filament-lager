@@ -1400,10 +1400,11 @@ function openJobEdit(job) {
   $("#jobTitle").textContent = `${job.print_name || "Druck"} · ${fmtDateTime(job.created_at)}`;
   // Je Rolle: Menge ändern oder auf eine andere Rolle umbuchen, wenn beim Druck die falsche zugeordnet war.
   $("#jobRows").innerHTML = job.items.map((u, i) => `<div class="jobEditRow">${dot(u.spool?.rgba)}
-      <span class="grow">${esc(u.spool ? rollName(u.spool) : "Unbekannte Rolle")} · Rolle ${u.spool_id}${u.edited && !u.manual ? `<div class="muted">Bambuddy: ${Math.round(u.original)} g</div>` : ""}${u.manual ? `<div class="muted">von Hand nachgetragen</div>` : ""}
-        <select class="moveSel" data-move="${i}" title="Auf eine andere Rolle umbuchen"><option value="">Rolle stimmt</option>${preferredRoll(state.spools.filter((s) => s.id !== u.spool_id)).map((s) => rollOption(s).replace(/^<option value="(\d+)">/, '<option value="$1">Umbuchen auf: ')).join("")}</select></span>
-      <label class="narrow">Gramm<input type="number" min="0" max="5000" step="0.1" data-item="${i}" value="${Math.round(u.weight_used * 10) / 10}"></label></div>`).join("");
+      <span class="grow">${esc(u.spool ? rollName(u.spool) : "Unbekannte Rolle")} · Rolle ${u.spool_id}${u.edited && !u.manual ? `<div class="muted">Bambuddy: ${Math.round(u.original)} g</div>` : ""}${u.manual ? `<div class="muted">von Hand nachgetragen</div>` : ""}</span>
+      <label class="narrow">Gramm<input type="number" min="0" max="5000" step="0.1" data-item="${i}" value="${Math.round(u.weight_used * 10) / 10}"></label>
+      <div class="moveWrap"><select class="moveSel" data-move="${i}" title="Auf eine andere Rolle umbuchen"><option value="">Rolle stimmt</option>${preferredRoll(state.spools.filter((s) => s.id !== u.spool_id)).map((s) => rollOption(s).replace(/^(<option [^>]*>)/, "$1Umbuchen auf: ")).join("")}</select></div></div>`).join("");
   $("#jobRows").classList.toggle("hidden", !job.items.length);
+  $("#jobRows").querySelectorAll("select.moveSel").forEach(rollPick);
   $("#jobAddHead").textContent = a ? "Welche Rolle wurde verwendet?" : "Rolle nachtragen, die nicht abgebucht wurde";
   const used = new Set(job.items.map((u) => u.spool_id));
   let rolls = preferredRoll(state.spools.filter((s) => !used.has(s.id)));
@@ -1415,6 +1416,7 @@ function openJobEdit(job) {
     rolls = [...rolls].sort((x, y) => score(x) - score(y));
   }
   $("#jobForm").addRoll.innerHTML = (a ? "" : `<option value="">— keine —</option>`) + rolls.map(rollOption).join("");
+  rollPick($("#jobForm").addRoll);
   $("#jobForm").addGrams.value = a ? a.grams : "";
   $("#jobError").textContent = "";
   $("#jobDialog").showModal();
@@ -1545,7 +1547,7 @@ function slotOption(x) {
 
 function rollOption(s) {
   const where = state.slotOf?.has(s.id) ? " · im Drucker" : "";
-  return `<option value="${s.id}">${esc(rollName(s))} · ${kg(remaining(s))}${(s.weight_used || 0) >= 1 ? " (angebrochen)" : ""}${hasChip(s) ? " · Chip" : ""}${where}</option>`;
+  return `<option value="${s.id}" data-rgba="${esc(s.rgba || "")}">${esc(rollName(s))} · ${kg(remaining(s))}${(s.weight_used || 0) >= 1 ? " (angebrochen)" : ""}${hasChip(s) ? " · Chip" : ""}${where}</option>`;
 }
 
 function preferredRoll(list) {
@@ -1575,6 +1577,7 @@ function openLoad({ group, spool, slot }) {
   f.slot.innerHTML = [...slots].sort((a, b) => order(a) - order(b)).map(slotOption).join("");
   if (slot) f.slot.value = `${slot.printer_id}:${slot.ams_id}:${slot.tray_id}`;
   f.roll.disabled = rolls.length === 1;
+  rollPick(f.roll);
   $("#loadError").textContent = "";
   $("#loadDialog").showModal();
 }
@@ -2083,3 +2086,76 @@ function setupCombo(input) {
 }
 
 document.querySelectorAll("input[list]").forEach(setupCombo);
+
+// ---------- Rollenauswahl mit Farbpunkt ----------
+// Eine normale Auswahlliste kann keine Farben zeigen. Die Liste bleibt im Formular (Wert, Absenden),
+// angezeigt wird ein Knopf mit Farbpunkt, der eine eigene Liste aufklappt.
+
+function rollPick(select) {
+  const optHtml = (o) => `${o.dataset.rgba !== undefined ? dot(o.dataset.rgba, 18) : `<span class="swatch none" style="width:18px;height:18px"></span>`}<span>${esc(o.textContent)}</span>`;
+  if (!select._pick) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "rollPick";
+    select.after(btn);
+    select.classList.add("pickHidden");
+    const box = document.createElement("div");
+    box.className = "combo hidden";
+    box.setAttribute("role", "listbox");
+    (select.closest("dialog") || document.body).appendChild(box);
+    let active = -1;
+    const close = () => box.classList.add("hidden");
+    const highlight = (i) => {
+      active = i;
+      box.querySelectorAll(".comboItem").forEach((el, n) => el.classList.toggle("active", n === i));
+      box.children[i]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    };
+    const place = () => {
+      const r = btn.getBoundingClientRect();
+      const below = window.innerHeight - r.bottom - 12;
+      box.style.left = r.left + "px";
+      box.style.width = Math.max(r.width, 240) + "px";
+      box.style.maxHeight = Math.max(160, Math.min(360, below > 220 ? below : r.top - 12)) + "px";
+      if (below > 220 || below > r.top) { box.style.top = r.bottom + 4 + "px"; box.style.bottom = ""; }
+      else { box.style.top = ""; box.style.bottom = window.innerHeight - r.top + 4 + "px"; }
+    };
+    const pick = (i) => {
+      select.selectedIndex = i;
+      close();
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      btn.focus();
+    };
+    btn.addEventListener("click", () => {
+      if (!box.classList.contains("hidden")) return close();
+      box.innerHTML = [...select.options].map((o) => `<div class="comboItem rollItem" role="option">${optHtml(o)}</div>`).join("");
+      box.classList.remove("hidden");
+      place();
+      highlight(select.selectedIndex);
+    });
+    btn.addEventListener("keydown", (ev) => {
+      if (box.classList.contains("hidden")) return;
+      if (ev.key === "ArrowDown") { ev.preventDefault(); highlight(Math.min(select.options.length - 1, active + 1)); }
+      else if (ev.key === "ArrowUp") { ev.preventDefault(); highlight(Math.max(0, active - 1)); }
+      else if (ev.key === "Enter" && active >= 0) { ev.preventDefault(); pick(active); }
+      else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); close(); }
+    });
+    btn.addEventListener("blur", () => setTimeout(close, 150));
+    box.addEventListener("mousedown", (ev) => {
+      const el = ev.target.closest(".comboItem");
+      if (!el) return;
+      ev.preventDefault();
+      pick([...box.children].indexOf(el));
+    });
+    select.addEventListener("change", () => select._pick());
+    const follow = () => { if (!box.classList.contains("hidden")) place(); };
+    window.addEventListener("resize", follow);
+    (select.closest("dialog") || window).addEventListener("scroll", follow, true);
+    select.closest("dialog")?.addEventListener("close", close);
+    select._pick = () => {
+      const o = select.options[select.selectedIndex];
+      btn.innerHTML = (o ? optHtml(o) : "<span>—</span>") + `<span class="rollPickArrow">${"\u25BE"}</span>`;
+      btn.disabled = select.disabled;
+    };
+  }
+  select._pick();
+}
