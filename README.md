@@ -17,9 +17,11 @@
 
 ![Lagerübersicht](images/lager.png)
 
-<details><summary>Listenansicht</summary>
+<details><summary>Listenansicht und Design</summary>
 
 ![Listenansicht](images/liste.png)
+
+![Design](images/design.png)
 
 </details>
 
@@ -41,8 +43,10 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 - **Bearbeiten und Ausbuchen**: fehlende Angaben nachtragen, Farben korrigieren, eine zu viel erfasste Rolle wieder ausbuchen (wird in Bambuddy archiviert, nicht gelöscht).
 - **Bestätigung**: jedes Ein- und Ausbuchen von Hand fragt vorher nach.
 - **Filter**: nach Hersteller, Material, Farbfamilie und Lagerort, jeweils mit Mehrfachauswahl.
+- **Löschen**: „−1“ bucht eine Rolle aus (in Bambuddy archiviert, wiederherstellbar). Endgültig löschen lässt sich eine einzelne Rolle in der Rollenübersicht und eine ganze Sorte unter „Sorte bearbeiten“, dort mit Wisch-Bestätigung.
+- **Design**: im Reiter Design Schriftarten für Titel und Text sowie die Grösse von Titeln, Text und Beschreibungen einzeln einstellen. Gilt pro Benutzer auf allen Geräten.
 - **Hersteller verwalten**: Webseite und Logo pro Hersteller, neue Hersteller anlegen und nicht mehr gebrauchte löschen. Löschen geht nur, wenn keine Rolle mehr zugewiesen ist.
-- **Benutzerrechte**: pro Home-Assistant-Benutzer einstellbar, wer nur schauen, erfassen oder auch bearbeiten darf.
+- **Benutzergruppen und Rechte**: Gruppen mit einzelnen Rechten, z. B. welche Reiter sie sehen, Einkaufsliste, Rollen hinzufügen oder löschen, Hersteller bearbeiten. Admin hat immer alles. Bei der Einkaufsliste steht, wer einen Eintrag wann gemacht hat.
 - **Hell oder dunkel**: standardmäßig dunkel, oben rechts umschaltbar. Die Wahl gilt pro Benutzer auf allen Geräten.
 - **Aktuell**: die Seite aktualisiert sich alle 15 Sekunden von selbst und funktioniert auch auf dem Handy und über Nabu Casa.
 
@@ -97,31 +101,25 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 
 ## Benutzer und Rechte
 
-Die Rechte stellst du unter Einstellungen → Apps → Filament-Lager → **Konfiguration** ein.
+Benutzer und Rechte verwaltest du direkt in der App im Reiter **Benutzer** (nur für Admins sichtbar).
 
-| Recht | Darf |
-|---|---|
-| `kein` | nichts, sieht nur „Kein Zugriff“ |
-| `ansehen` | Lager, Einkaufsliste und Hersteller ansehen |
-| `erfassen` | zusätzlich Rollen einbuchen und die Einkaufsliste pflegen |
-| `bearbeiten` | zusätzlich Sorten ändern, Rollen ausbuchen, Hersteller und Webseiten pflegen |
-| `admin` | zusätzlich Logos hochladen und den Reiter „Benutzer“ sehen |
-
-- **Benutzer und Rechte**: ein Eintrag pro Person, mit dem Home-Assistant-**Benutzernamen** (nicht dem Anzeigenamen) und dem Recht.
-- **Standard-Recht**: gilt für alle, die nicht eingetragen sind. Voreingestellt ist `ansehen`.
-- Den Benutzernamen findest du in Home Assistant unter Einstellungen → Personen → Benutzer, oder in der App im Reiter „Benutzer“, sobald die Person die App einmal geöffnet hat.
+- **Gruppen**: Jede Gruppe hat einzelne Rechte zum Ankreuzen: welche Reiter sie sieht (Lager, Einkaufsliste, Verbrauch, Hersteller, Lagerplätze, Design) und was sie darf (Einkaufsliste pflegen, Rollen hinzufügen, Rollen ausbuchen und löschen, Restgewicht und Lagerplatz ändern, Sorten bearbeiten, Rollen in den Drucker einlegen, Verbrauch korrigieren, Hersteller bearbeiten, Lagerplatz-Icons ändern). Eigene Gruppen legst du mit „+ Neue Gruppe“ an.
+- **Admin** hat immer alle Rechte und verwaltet als Einziger Benutzer und Gruppen. „Kein Zugriff“ ist ebenfalls fest.
+- **Benutzer**: Jeder, der die App einmal geöffnet hat, erscheint dort mit einer Auswahl für die Gruppe. Neue Benutzer kommen in die Standardgruppe, die du oben einstellst.
+- **Erster Admin**: Unter Einstellungen → Apps → Filament-Lager → **Konfiguration** trägst du dich unter **Benutzer und Rechte** mit deinem Home-Assistant-**Benutzernamen** als `admin` ein. Wer dort `admin` ist, bleibt immer Admin, so kann sich niemand aussperren. Die anderen Einträge dort gelten als Vorgabe, solange in der App keine Gruppe gewählt ist.
+- Voreingestellt sind die Gruppen Ansehen, Erfassen und Bearbeiten. Einkaufsliste und eigenes Design darf jede davon; Rollen hinzufügen und entfernen anfangs nur Admin.
 - Änderungen gelten sofort, ohne Neustart. Die App prüft die Rechte auch auf dem Server, nicht nur in der Anzeige.
 
 ## Hersteller, Webseiten und Logos
 
 Im Reiter **Hersteller** siehst du alle Hersteller mit Anzahl Rollen und Webseite.
 
-- **Webseite**: mit dem Recht `bearbeiten` trägst du sie unter „Bearbeiten“ ein. Sie erscheint dann als Link im Lager und auf der Hersteller-Seite, so findest du den Shop schnell.
-- **Logo**: Admins laden es dort als PNG, JPG, WebP oder GIF hoch. Ohne Logo zeigt die App einfach den Namen. Logos werden nie automatisch aus dem Internet geholt.
+- **Webseite**: mit dem Recht „Hersteller bearbeiten“ trägst du sie unter „Bearbeiten“ ein. Sie erscheint dann als Link im Lager und auf der Hersteller-Seite, so findest du den Shop schnell.
+- **Logo**: Wer Hersteller bearbeiten darf, lädt es dort als PNG, JPG, WebP oder GIF hoch. Ohne Logo zeigt die App einfach den Namen. Logos werden nie automatisch aus dem Internet geholt.
 
 ## Sichtbarkeit in der Seitenleiste
 
-Home Assistant kennt für App-Einträge in der Seitenleiste nur „alle Benutzer“ oder „nur Admins“. Filament-Lager ist für alle Benutzer freigegeben; wer das Recht `kein` hat, sieht beim Öffnen nur „Kein Zugriff“. Jeder Benutzer kann den Eintrag zusätzlich in seinem Profil unter **Seitenleiste bearbeiten** ausblenden.
+Home Assistant kennt für App-Einträge in der Seitenleiste nur „alle Benutzer“ oder „nur Admins“. Filament-Lager ist für alle Benutzer freigegeben; wer in der Gruppe „Kein Zugriff“ ist, sieht beim Öffnen nur „Kein Zugriff“. Jeder Benutzer kann den Eintrag zusätzlich in seinem Profil unter **Seitenleiste bearbeiten** ausblenden.
 
 ## RFID-Rollen richtig erfassen
 
@@ -152,7 +150,7 @@ Schlüssel in der Konfiguration prüfen. Er muss vollständig sein (beginnt mit 
 Läuft Bambuddy? Stimmt die Bambuddy-Adresse in der Konfiguration?
 
 **Andere Benutzer sehen nur „Kein Zugriff“**
-Sie stehen nicht unter „Benutzer und Rechte“ und das Standard-Recht ist `kein`. Eintragen oder Standard-Recht ändern.
+Sie sind in der Gruppe „Kein Zugriff“ oder die Standardgruppe ist „Kein Zugriff“. Im Reiter Benutzer eine andere Gruppe wählen.
 
 **Ändert die App etwas an meinen Druckern?**
 Nur wenn du eine Rolle einlegst und beim RFID-Abgleich: Bambuddy stellt dann Material und Farbe des AMS-Platzes passend zur Rolle ein. Sonst liest die App von den Druckern nur, welche Plätze belegt sind.

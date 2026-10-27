@@ -16,9 +16,12 @@ const state = {
 const $ = (sel) => document.querySelector(sel);
 
 // Rechte-Stufen wie im Server: 0 kein Zugriff, 1 ansehen, 2 erfassen, 3 bearbeiten, 4 Admin.
-const VIEW = 1, ADD = 2, EDIT = 3, ADMIN = 4;
-const LEVELS = ["Kein Zugriff", "Ansehen", "Erfassen", "Bearbeiten", "Admin"];
-const can = (level) => (state.me?.level ?? 0) >= level;
+// Rechte kommen pro Gruppe vom Server (siehe Reiter Benutzer); Admin darf alles.
+const isAdmin = () => state.me?.group === "admin";
+const has = (perm) => isAdmin() || (state.me?.perms || []).includes(perm);
+const hasAny = () => isAdmin() || (state.me?.perms || []).length > 0;
+const PERM_KEYS = ["tab_stock", "tab_shop", "tab_usage", "tab_brands", "tab_places", "tab_design", "shop_edit", "rolls_add",
+  "rolls_remove", "rolls_edit", "sorts_edit", "printer", "usage_edit", "brands_edit", "places_edit"];
 
 // Einheitliche Linien-Icons statt Emojis, damit alles gleich aussieht.
 const ICONS = {
@@ -91,6 +94,58 @@ function setView(view, save) {
   if (state.loaded) renderStock();
 }
 
+// ---------- Design: Schriftarten und -grössen je Benutzer ----------
+// Nur Schriften, die auf den Geräten schon da sind: die App lädt nichts aus dem Internet.
+const FONTS = {
+  system: ["Standard (System)", 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'],
+  helvetica: ["Helvetica / Arial", '"Helvetica Neue", Helvetica, Arial, sans-serif'],
+  verdana: ["Verdana (gut lesbar)", "Verdana, Geneva, Tahoma, sans-serif"],
+  trebuchet: ["Trebuchet", '"Trebuchet MS", "Lucida Grande", sans-serif'],
+  rounded: ["Rundlich", 'ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Varela Round", system-ui, sans-serif'],
+  condensed: ["Schmal", '"Arial Narrow", "Roboto Condensed", "Helvetica Neue", sans-serif-condensed, sans-serif'],
+  georgia: ["Georgia (mit Serifen)", 'Georgia, "Times New Roman", serif'],
+  mono: ["Schreibmaschine", 'ui-monospace, Menlo, Consolas, "Courier New", monospace'],
+};
+const DESIGN_DEFAULT = { title_font: "system", text_font: "system", title_size: 100, text_size: 100, desc_size: 100 };
+
+function applyDesign(design) {
+  const d = { ...DESIGN_DEFAULT, ...(design || {}) };
+  state.design = d;
+  const vars = {
+    "--font-text": (FONTS[d.text_font] || FONTS.system)[1],
+    "--font-title": (FONTS[d.title_font] || FONTS.system)[1],
+    "--fs-title": d.title_size / 100,
+    "--fs-text": d.text_size / 100,
+    "--fs-desc": d.desc_size / 100,
+  };
+  for (const [k, v] of Object.entries(vars)) document.documentElement.style.setProperty(k, v);
+  try { localStorage.setItem("designVars", JSON.stringify(vars)); } catch { /* egal */ }
+}
+
+function fillDesignForm() {
+  const f = $("#designForm");
+  const opts = Object.entries(FONTS).map(([k, [label, stack]]) => `<option value="${k}" style="font-family:${esc(stack)}">${esc(label)}</option>`).join("");
+  f.title_font.innerHTML = opts;
+  f.text_font.innerHTML = opts;
+  for (const [k, v] of Object.entries(state.design || DESIGN_DEFAULT)) if (f[k]) f[k].value = v;
+  f.querySelectorAll(".designVal").forEach((el) => { el.textContent = f[el.dataset.for].value + " %"; });
+}
+
+let designTimer = null;
+function saveDesign(design) {
+  applyDesign(design);
+  fillDesignForm();
+  clearTimeout(designTimer);
+  designTimer = setTimeout(() => api("api/me", { method: "POST", body: JSON.stringify({ design: state.design }) }).catch(() => toast("Design nicht gespeichert")), 400);
+}
+
+$("#designForm").addEventListener("input", () => {
+  const f = $("#designForm");
+  saveDesign({ title_font: f.title_font.value, text_font: f.text_font.value,
+    title_size: +f.title_size.value, text_size: +f.text_size.value, desc_size: +f.desc_size.value });
+});
+$("#designReset").addEventListener("click", () => saveDesign(DESIGN_DEFAULT));
+
 $("#viewTiles").innerHTML = ic("tiles");
 $("#viewList").innerHTML = ic("rows");
 document.querySelectorAll(".viewSwitch button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.view, true)));
@@ -99,14 +154,19 @@ $("#themeBtn").addEventListener("click", () => setTheme(document.documentElement
 setTheme(document.documentElement.dataset.theme);
 
 function applyRights() {
-  document.body.classList.toggle("can-add", can(ADD));
-  document.body.classList.toggle("can-edit", can(EDIT));
-  document.body.classList.toggle("is-admin", can(ADMIN));
-  const blocked = !can(VIEW);
+  // Pro Recht eine Klasse am body; Elemente mit need-<recht> sind ohne dieses Recht ausgeblendet (style.css).
+  for (const p of PERM_KEYS) document.body.classList.toggle("p-" + p, has(p));
+  document.body.classList.toggle("is-admin", isAdmin());
+  const blocked = !hasAny();
   $("main").querySelectorAll("section").forEach((s) => s.classList.toggle("blocked", blocked));
   $("#noAccess").classList.toggle("hidden", !blocked);
   $(".tabs").classList.toggle("hidden", blocked);
-  $("#meInfo").textContent = state.me?.name && state.me.name !== "lokal" ? `${state.me.name} · ${LEVELS[state.me.level]}` : "";
+  $("#meInfo").textContent = state.me?.name && state.me.name !== "lokal" ? `${state.me.name} · ${state.me.group_name || ""}` : "";
+  // Steht man auf einem Reiter, den man nicht mehr sehen darf, auf den ersten erlaubten wechseln.
+  const active = document.querySelector(".tab.active");
+  if (!blocked && active && getComputedStyle(active).display === "none") {
+    [...document.querySelectorAll(".tab")].find((t) => getComputedStyle(t).display !== "none")?.click();
+  }
 }
 const norm = (s) => (s || "").toString().trim().toLowerCase();
 const esc = (s) => (s ?? "").toString().replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -259,18 +319,22 @@ async function load(quiet) {
   const me = await api("api/me").catch(() => state.me);
   if (me?.theme && me.theme !== document.documentElement.dataset.theme) setTheme(me.theme);
   if (me?.view && me.view !== state.view) setView(me.view);
-  if (me && me.level !== state.me?.level) {
+  if (me?.design && JSON.stringify({ ...DESIGN_DEFAULT, ...me.design }) !== JSON.stringify(state.design) && !$("#designForm").contains(document.activeElement)) {
+    applyDesign(me.design);
+    fillDesignForm();
+  }
+  if (me && (me.group !== state.me?.group || JSON.stringify(me.perms) !== JSON.stringify(state.me?.perms))) {
     state.me = me;
     applyRights();
   }
-  if (!can(VIEW)) return;
+  if (!hasAny()) return;
   try {
     const [spools, shop, rec, slots, brands, locations, , rawUsage, printers, edits] = await Promise.all([api("api/inventory/spools?include_archived=true"),
       api("api/inventory/shopping-list"), api("reconcile").catch(() => null), api("api/inventory/assignments").catch(() => []),
       api("brands").catch(() => ({})), api("api/inventory/locations").catch(() => []),
       api("places").then((p) => { state.places = p || {}; }).catch(() => {}),
       api("api/inventory/usage?limit=500").catch(() => []), api("printers").catch(() => null),
-      api("usage-edits").catch(() => null)]);
+      api("usage-edits").catch(() => null), api("shop-meta").then((m) => { state.shopMeta = m || {}; }).catch(() => {})]);
     state.brands = brands;
     state.locations = new Map((Array.isArray(locations) ? locations : []).map((l) => [l.id, l.name]));
     state.locationList = Array.isArray(locations) ? locations : [];
@@ -413,8 +477,8 @@ function renderChipBox() {
   $("#chipBox").innerHTML = `<h3>Vom Drucker erkannt</h3>` +
     unclear.map((u) => `<div class="chipRow unclear">${dot(u.rgba)}<span>Chip-Rolle <b>${esc(u.chip)}</b> passt zu mehreren Sorten:</span>
       <select data-chip="${u.chip_id}">${u.options.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>
-      <button class="primary need-edit" data-act="resolve" data-chip="${u.chip_id}">Zuordnen</button>
-      <button class="need-edit" data-act="keep" data-chip="${u.chip_id}">Ist eine neue Rolle</button></div>`).join("") +
+      <button class="primary need-printer" data-act="resolve" data-chip="${u.chip_id}">Zuordnen</button>
+      <button class="need-printer" data-act="keep" data-chip="${u.chip_id}">Ist eine neue Rolle</button></div>`).join("") +
     recent.map((m) => `<div class="chipRow">${dot(m.rgba)}<span>Chip erkannt und deiner Lager-Rolle <b>${esc(m.name)}</b> zugeordnet, nichts doppelt.</span></div>`).join("");
   $("#chipBox").classList.remove("hidden");
 }
@@ -461,8 +525,8 @@ function renderBrands() {
       <span class="muted">${b.rolls} ${b.rolls === 1 ? "Rolle" : "Rollen"}</span>
       ${websiteLink(b.name) || `<span class="muted">keine Webseite</span>`}
       <div class="brandActions">
-        <button class="need-edit" data-act="brand" data-brand="${esc(b.name)}">Bearbeiten</button>
-        <button class="need-edit danger" data-act="deleteBrand" data-brand="${esc(b.name)}" ${b.rolls ? `disabled title="Löschen geht erst, wenn keine Rolle mehr zugewiesen ist"` : `title="Hersteller löschen"`}>${ic("trash")}</button>
+        <button class="need-brands_edit" data-act="brand" data-brand="${esc(b.name)}">Bearbeiten</button>
+        <button class="need-brands_edit danger" data-act="deleteBrand" data-brand="${esc(b.name)}" ${b.rolls ? `disabled title="Löschen geht erst, wenn keine Rolle mehr zugewiesen ist"` : `title="Hersteller löschen"`}>${ic("trash")}</button>
       </div>
     </div>`).join("") : `<div class="emptyState">Noch keine Hersteller.</div>`;
 }
@@ -587,7 +651,7 @@ function renderStock() {
     return `<div class="brand">
       <div class="brandHead">${logoHtml(brand)}<h2>${esc(brand)}</h2><span class="muted">${rollCount(list)}</span>
         ${websiteLink(brand)}
-        <button class="icon need-edit" data-act="brand" data-brand="${esc(brand)}" title="Hersteller bearbeiten">${ic("edit")}</button></div>
+        <button class="icon need-brands_edit" data-act="brand" data-brand="${esc(brand)}" title="Hersteller bearbeiten">${ic("edit")}</button></div>
       ${mats.map((mat) => `<div class="matGroup">
         <h3 class="matHead">${esc(mat)} <span class="muted">${rollCount(byMat.get(mat))}</span></h3>
         ${asList ? `<div class="stockList">${byMat.get(mat).map(rowHtml).join("")}</div>` : `<div class="grid">${byMat.get(mat).map(tileHtml).join("")}</div>`}
@@ -601,7 +665,7 @@ function tileHtml(g) {
   const badge = g.empty ? `<span class="badge empty">leer</span>` : g.low ? `<span class="badge low">knapp</span>` : "";
   return `<div class="tile ${cls}">
     <div class="tileTop" data-edit="${esc(g.key)}" title="Antippen zum Bearbeiten"><span class="swatch" style="background:${color(g)}"></span>
-      <div class="grow"><div class="tileName">${esc(g.color_name || "Ohne Farbname")} <span class="editHint need-edit">${ic("edit")}</span></div>
+      <div class="grow"><div class="tileName">${esc(g.color_name || "Ohne Farbname")} <span class="editHint need-sorts_edit">${ic("edit")}</span></div>
       <div class="tileSub">${esc([g.material, g.subtype].filter(Boolean).join(" "))}${missingFields(g).length ? ` <span class="missing">· fehlt: ${missingFields(g).join(", ")}</span>` : ""}</div></div></div>
     <div class="bar"><span style="width:${pct}%"></span></div>
     <div class="tileInfo"><span><b>${g.shelf}</b> im Lager${g.printer ? ` · <b>${g.printer}</b> im Drucker` : ""} ${badge}</span><span>${kg(g.remaining)}</span></div>
@@ -619,10 +683,10 @@ function tileHtml(g) {
 
 function tileActions(g) {
   const cart = cartFor(g);
-  return `<button class="minus need-edit" data-act="minus" data-key="${esc(g.key)}" title="Eine Rolle ausbuchen"${g.shelf ? "" : " disabled"}>−</button>
-      <button class="need-add" data-act="plus" data-key="${esc(g.key)}" title="Eine volle Rolle dazubuchen">+1</button>
-      <button class="need-add" data-act="cart" data-key="${esc(g.key)}" title="Auf die Einkaufsliste">${cart ? `${ic("cart")} <span class="badge cart">${cart.quantity_spools}</span>` : ic("cart")}</button>
-      <button class="need-add" data-act="load" data-key="${esc(g.key)}" title="Rolle in den Drucker einlegen"${g.shelf ? "" : " disabled"}>${ic("printer")}</button>
+  return `<button class="minus need-rolls_remove" data-act="minus" data-key="${esc(g.key)}" title="Eine Rolle ausbuchen"${g.shelf ? "" : " disabled"}>−1</button>
+      <button class="need-rolls_add" data-act="plus" data-key="${esc(g.key)}" title="Eine volle Rolle dazubuchen">+1</button>
+      <button class="need-shop_edit" data-act="cart" data-key="${esc(g.key)}" title="Auf die Einkaufsliste">${cart ? `${ic("cart")} <span class="badge cart">${cart.quantity_spools}</span>` : ic("cart")}</button>
+      <button class="need-printer" data-act="load" data-key="${esc(g.key)}" title="Rolle in den Drucker einlegen"${g.shelf ? "" : " disabled"}>${ic("printer")}</button>
       <button data-act="rolls" data-key="${esc(g.key)}" title="Rollen einzeln ansehen, Restgewicht und Verbrauch">${ic("list")}</button>`;
 }
 
@@ -637,7 +701,7 @@ function rowHtml(g) {
   ];
   return `<div class="stockRow ${cls}">
     <div class="rowName" data-edit="${esc(g.key)}" title="Antippen zum Bearbeiten"><span class="swatch" style="background:${color(g)}"></span>
-      <div><div class="tileName">${esc(g.color_name || "Ohne Farbname")} <span class="editHint need-edit">${ic("edit")}</span></div>
+      <div><div class="tileName">${esc(g.color_name || "Ohne Farbname")} <span class="editHint need-sorts_edit">${ic("edit")}</span></div>
       <div class="tileSub">${esc(g.subtype || "")}${missingFields(g).length ? ` <span class="missing">${g.subtype ? "· " : ""}fehlt: ${missingFields(g).join(", ")}</span>` : ""}</div></div></div>
     <div class="rowStock"><span><b>${g.shelf}</b> im Lager${g.printer ? ` · <b>${g.printer}</b> im Drucker` : ""} ${badge}</span>
       <div class="rowBar"><div class="bar"><span style="width:${pct}%"></span></div><span>${kg(g.remaining)}</span></div></div>
@@ -666,19 +730,27 @@ function renderShop() {
     const statusLabel = { pending: "zu kaufen", purchased: "bestellt", received: "eingetroffen" }[i.status] || i.status;
     const done = i.status === "received";
     let actions = "";
-    if (i.status === "pending") actions = `<button class="need-add" data-act="ordered" data-id="${i.id}">Bestellt</button><button class="primary need-add" data-act="receive" data-id="${i.id}">Eingetroffen</button>`;
-    else if (i.status === "purchased") actions = `<button class="primary need-add" data-act="receive" data-id="${i.id}">Eingetroffen → ins Lager</button>`;
+    if (i.status === "pending") actions = `<button class="need-shop_edit" data-act="ordered" data-id="${i.id}">Bestellt</button><button class="primary need-shop_edit need-rolls_add" data-act="receive" data-id="${i.id}">Eingetroffen</button>`;
+    else if (i.status === "purchased") actions = `<button class="primary need-shop_edit need-rolls_add" data-act="receive" data-id="${i.id}">Eingetroffen → ins Lager</button>`;
     return `<div class="shopItem ${done ? "done" : ""}">
       ${sw}${i.brand ? logoHtml(i.brand, "small") : ""}
       <div class="shopMain"><b>${esc(i.color_name || "")}</b> ${esc([i.material, i.subtype].filter(Boolean).join(" "))}
-        <div class="muted">${esc(i.brand || "")}${i.note ? " · " + esc(i.note) : ""}</div></div>
+        <div class="muted">${esc(i.brand || "")}${i.note ? " · " + esc(i.note) : ""}</div>${shopWho(i)}</div>
       <div class="shopStock">Im Lager: <b>${st.rolls}</b> ${st.rolls === 1 ? "Rolle" : "Rollen"}<div class="muted">${st.printer ? st.printer + " im Drucker · " : ""}${kg(st.grams)} übrig</div></div>
-      <div class="qty">${done ? "" : `<button class="icon need-add" data-act="qty-" data-id="${i.id}">−</button>`}<span>${i.quantity_spools}×</span>${done ? "" : `<button class="icon need-add" data-act="qty+" data-id="${i.id}">+</button>`}</div>
+      <div class="qty">${done ? "" : `<button class="icon need-shop_edit" data-act="qty-" data-id="${i.id}">−</button>`}<span>${i.quantity_spools}×</span>${done ? "" : `<button class="icon need-shop_edit" data-act="qty+" data-id="${i.id}">+</button>`}</div>
       <span class="status ${esc(i.status)}">${esc(statusLabel)}</span>
       ${actions}
-      <button class="icon need-add" data-act="remove" data-id="${i.id}" title="Entfernen">${ic("close")}</button>
+      <button class="icon need-shop_edit" data-act="remove" data-id="${i.id}" title="Entfernen">${ic("close")}</button>
     </div>`;
   }).join("");
+}
+
+// Wer den Eintrag auf die Einkaufsliste gesetzt hat und wann (merkt sich die App selbst).
+function shopWho(i) {
+  const m = state.shopMeta?.[String(i.id)];
+  if (!m) return "";
+  const changed = m.changed_by && m.changed_by !== m.by ? ` · Menge geändert von ${esc(m.changed_by)}` : "";
+  return `<div class="muted shopWho">${ic("edit")} eingetragen von <b>${esc(m.by)}</b> am ${fmtDateTime(m.at)}${changed}</div>`;
 }
 
 function statusOrder(s) {
@@ -712,14 +784,17 @@ async function addSpools(spool, quantity) {
   else await api("api/inventory/spools", { method: "POST", body: JSON.stringify(spool) });
 }
 
-function askConfirm(title, html, yesLabel = "Bestätigen", danger = false) {
+function askConfirm(title, html, yesLabel = "Bestätigen", danger = false, slide = false) {
   // Eigenes Bestätigungsfenster; liefert true bei „Bestätigen“.
+  // Mit slide muss man zum Bestätigen einen Regler ganz nach rechts ziehen (für Löschen, das nicht rückgängig geht).
   const dlg = $("#confirmDialog");
   $("#confirmTitle").textContent = title;
-  $("#confirmBody").innerHTML = html;
+  $("#confirmBody").innerHTML = html + (slide ? `<div class="slideTrack"><span class="slideText">${esc(yesLabel)}: nach rechts ziehen</span>
+    <div class="slideKnob" role="slider" tabindex="0" aria-label="${esc(yesLabel)}: nach rechts ziehen" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">${ic("trash")}</div></div>` : "");
   const yes = $("#confirmYes");
   yes.textContent = yesLabel;
   yes.className = danger ? "danger" : "primary";
+  yes.classList.toggle("hidden", slide);
   return new Promise((resolve) => {
     // Direkt auf die Knöpfe reagieren statt auf „close“, das kommt in manchen Browsern verzögert.
     const done = (answer) => {
@@ -727,6 +802,7 @@ function askConfirm(title, html, yesLabel = "Bestätigen", danger = false) {
       dlg.removeEventListener("cancel", onCancel);
       resolve(answer);
     };
+    if (slide) setupSlide(dlg, () => { dlg.close(); done(true); });
     const onClick = (ev) => {
       const b = ev.target.closest("button");
       if (b) done(b.value === "yes");
@@ -735,6 +811,33 @@ function askConfirm(title, html, yesLabel = "Bestätigen", danger = false) {
     dlg.addEventListener("click", onClick);
     dlg.addEventListener("cancel", onCancel);
     dlg.showModal();
+  });
+}
+
+function setupSlide(dlg, onDone) {
+  const track = dlg.querySelector(".slideTrack"), knob = dlg.querySelector(".slideKnob");
+  const max = () => track.clientWidth - knob.offsetWidth - 8;
+  let x = 0, startX = null;
+  const move = (v, animate) => {
+    x = Math.max(0, Math.min(max(), v));
+    knob.style.transition = animate ? "transform .2s" : "none";
+    knob.style.transform = `translateX(${x}px)`;
+    track.style.setProperty("--slide", Math.round(x / max() * 100) + "%");
+    knob.setAttribute("aria-valuenow", Math.round(x / max() * 100));
+  };
+  const finish = () => {
+    if (x >= max() - 2) onDone();
+    else move(0, true);
+  };
+  knob.addEventListener("pointerdown", (ev) => { startX = ev.clientX - x; knob.setPointerCapture(ev.pointerId); });
+  knob.addEventListener("pointermove", (ev) => { if (startX !== null) move(ev.clientX - startX); });
+  knob.addEventListener("pointerup", () => { startX = null; finish(); });
+  knob.addEventListener("pointercancel", () => { startX = null; move(0, true); });
+  knob.addEventListener("keydown", (ev) => {
+    if (ev.key !== "ArrowRight" && ev.key !== "ArrowLeft") return;
+    ev.preventDefault();
+    move(x + (ev.key === "ArrowRight" ? 1 : -1) * max() / 5, true);
+    if (x >= max() - 2) setTimeout(onDone, 200);
   });
 }
 
@@ -760,6 +863,29 @@ function removableSpool(g) {
   return shelf.sort((a, b) => score(a) - score(b) || b.id - a.id)[0];
 }
 
+async function deleteRoll(s) {
+  const a = state.slotOf?.get(s.id);
+  const uses = (state.usage?.get(s.id) || []).length;
+  const ok = await askConfirm("Rolle löschen", `<div class="confirmLine">${dot(s.rgba, 32)}<span><b>${esc(rollName(s))}</b> · Rolle ${s.id} · ${kg(remaining(s))}</span></div>
+    <p class="confirmNote">Die Rolle wird in Bambuddy endgültig gelöscht, nicht nur ausgebucht.${uses ? ` Ihre ${uses} Verbrauchseinträge verschwinden mit.` : ""}${a ? ` Sie wird von <b>${esc(slotLabel(a))}</b> gelöst.` : ""} Zum Ausbuchen mit Wiederherstellen nimm lieber „−1“.</p>`, "Löschen", true);
+  if (!ok) return;
+  await api(`api/inventory/spools/${s.id}`, { method: "DELETE" });
+  toast(`Rolle ${s.id} gelöscht`);
+}
+
+async function deleteSort(g) {
+  const inPrinter = g.spools.filter((s) => state.inPrinter?.has(s.id)).length;
+  const ok = await askConfirm("Ganze Sorte löschen", sortLine(g.template, g.spools.length) +
+    `<p class="confirmNote">Alle ${g.spools.length} ${g.spools.length === 1 ? "Rolle" : "Rollen"} dieser Sorte werden in Bambuddy endgültig gelöscht, mit ihrem Verbrauch.${inPrinter ? ` ${inPrinter} davon ${inPrinter === 1 ? "steckt" : "stecken"} im Drucker und ${inPrinter === 1 ? "wird" : "werden"} gelöst.` : ""} Das lässt sich nicht rückgängig machen.</p>`, "Löschen", true, true);
+  if (!ok) return;
+  $("#editDialog").close();
+  let failed = 0;
+  for (const s of g.spools) {
+    try { await api(`api/inventory/spools/${s.id}`, { method: "DELETE" }); } catch { failed++; }
+  }
+  toast(failed ? `${g.spools.length - failed} gelöscht, ${failed} nicht` : `${g.color_name || g.material} gelöscht`, failed ? 5000 : 2600);
+}
+
 async function minusOne(g) {
   const spool = removableSpool(g);
   if (!spool) return toast("Keine Rolle im Lager zum Ausbuchen, alle stecken im Drucker");
@@ -778,7 +904,7 @@ async function setCartQty(fields, qty, existing) {
   if (qty > 0) {
     await api("api/inventory/shopping-list", {
       method: "POST",
-      body: JSON.stringify({ material: fields.material, subtype: fields.subtype || null, brand: fields.brand || null, color_name: fields.color_name || null, quantity_spools: qty, note: existing?.note || null }),
+      body: JSON.stringify({ material: fields.material, subtype: fields.subtype || null, brand: fields.brand || null, color_name: fields.color_name || null, quantity_spools: qty, note: existing?.note || null, ...(existing ? { _keep: existing.id } : {}) }),
     });
     if (existing && existing.status !== "pending") {
       const fresh = await api("api/inventory/shopping-list");
@@ -818,7 +944,7 @@ document.addEventListener("click", (ev) => {
   if (!btn) return;
   if (btn.classList.contains("tab")) {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
-    for (const name of ["stock", "shop", "usage", "brands", "places", "users"]) $("#tab-" + name).classList.toggle("hidden", btn.dataset.tab !== name);
+    for (const name of ["stock", "shop", "usage", "brands", "places", "users", "design"]) $("#tab-" + name).classList.toggle("hidden", btn.dataset.tab !== name);
     if (btn.dataset.tab === "users") loadUsers();
     try { localStorage.setItem("tab", btn.dataset.tab); } catch { /* egal */ }
     return;
@@ -833,9 +959,9 @@ document.addEventListener("click", (ev) => {
   else if (act === "cart" && g) run(() => addToCart(g));
   else if (act === "load" && g) { btn.disabled = false; openLoad({ group: g }); }
   else if (act === "rolls" && g) { btn.disabled = false; openRolls(g); }
-  else if (act === "place") { btn.disabled = false; if (can(EDIT)) openPlace(parseInt(btn.dataset.place, 10)); }
-  else if (act === "brand") { btn.disabled = false; if (can(EDIT)) openBrand(btn.dataset.brand); }
-  else if (act === "deleteBrand") { btn.disabled = false; if (can(EDIT)) deleteBrand(btn.dataset.brand); }
+  else if (act === "place") { btn.disabled = false; if (has("places_edit")) openPlace(parseInt(btn.dataset.place, 10)); }
+  else if (act === "brand") { btn.disabled = false; if (has("brands_edit")) openBrand(btn.dataset.brand); }
+  else if (act === "deleteBrand") { btn.disabled = false; if (has("brands_edit")) deleteBrand(btn.dataset.brand); }
   else if (act === "level") btn.disabled = false;
   else if (act === "resolve") {
     const stockId = parseInt(document.querySelector(`select[data-chip="${btn.dataset.chip}"]`).value, 10);
@@ -996,7 +1122,7 @@ let editGroup = null;
 
 document.addEventListener("click", (ev) => {
   const top = ev.target.closest("[data-edit]");
-  if (!top || !can(EDIT)) return;
+  if (!top || !has("sorts_edit")) return;
   const g = state.groups.find((x) => x.key === top.dataset.edit);
   if (g) openEdit(g);
 });
@@ -1028,6 +1154,8 @@ function openEdit(g) {
   $("#editError").textContent = "";
   $("#editDialog").showModal();
 }
+
+$("#deleteSort").addEventListener("click", () => { if (editGroup) run(() => deleteSort(editGroup)); });
 
 $("#editForm").color.addEventListener("input", (ev) => { ev.target.dataset.touched = "1"; });
 
@@ -1134,7 +1262,7 @@ function renderUsage() {
       <div class="jobHead"><b>${esc(j.print_name || "Druck")}</b>${status}
         <span class="muted">${fmtDateTime(j.created_at)}${printerName(j.printer_id) ? " · " + esc(printerName(j.printer_id)) : ""}</span>
         <span class="jobTotal"><b>−${Math.round(grams)} g</b>${cost ? ` <span class="muted">${money(cost)}</span>` : ""}</span>
-        <button type="button" class="need-edit jobEdit" data-act="editJob" data-job="${esc(j.key)}" title="Abbuchung korrigieren">${ic("edit")} Korrigieren</button></div>
+        <button type="button" class="need-usage_edit jobEdit" data-act="editJob" data-job="${esc(j.key)}" title="Abbuchung korrigieren">${ic("edit")} Korrigieren</button></div>
       <div class="jobRows">
         <div class="jobRow jobLabels muted"><span></span><span>Rolle</span><span>vorher</span><span>abgebucht</span><span>danach</span></div>
         ${j.items.map((u) => {
@@ -1308,11 +1436,11 @@ function unassignedSlots() {
 function renderSlotBox() {
   const open = unassignedSlots();
   const box = $("#slotBox");
-  if (!open.length || !can(VIEW)) return box.classList.add("hidden");
+  if (!open.length || !has("tab_stock")) return box.classList.add("hidden");
   box.innerHTML = `<h3>Rolle im Drucker ohne Zuordnung</h3>
     <p class="muted">Ohne Zuordnung wird der Verbrauch dieser Rollen nicht vom Lager abgezogen.</p>` +
     open.map((x) => `<div class="chipRow unclear">${dot(x.rgba)}<span><b>${esc(fullSlotLabel(x))}</b>${x.type ? " · " + esc(x.type) : ""}</span>
-      <button class="primary need-add" data-act="assignSlot" data-slot="${x.printer_id}:${x.ams_id}:${x.tray_id}">Lager-Rolle zuordnen</button></div>`).join("");
+      <button class="primary need-printer" data-act="assignSlot" data-slot="${x.printer_id}:${x.ams_id}:${x.tray_id}">Lager-Rolle zuordnen</button></div>`).join("");
   box.classList.remove("hidden");
 }
 
@@ -1423,17 +1551,18 @@ function rollCard(s) {
     <div class="rollHead"><b>Rolle ${s.id}</b><span class="muted">${where}</span>${hasChip(s) ? `<span class="levelTag small">Chip</span>` : ""}</div>
     <div class="bar"><span style="width:${pct}%"></span></div>
     <div class="tileInfo"><span>Rest <b>${kg(remaining(s))}</b> von ${kg(s.label_weight || 0)}</span><span>${s.cost_per_kg ? money(rollValue(s)) : ""}</span></div>
-    <div class="rollEdit need-edit">
+    <div class="rollEdit need-rolls_edit">
       <label>Lagerplatz${a ? " (nach dem Herausnehmen)" : ""}<select data-place="${s.id}">${placeOptions(s)}</select></label>
     </div>
-    <div class="rollEdit need-edit">
+    <div class="rollEdit need-rolls_edit">
       <label>Restgewicht (g)<input type="number" min="0" step="1" data-rest="${s.id}" value="${Math.round(remaining(s))}"></label>
       <label>oder gewogen mit Spule (g)<input type="number" min="0" step="1" data-gross="${s.id}" placeholder="Spule ${core} g"></label>
       <button type="button" class="primary" data-act="saveWeight" data-roll="${s.id}">Speichern</button>
     </div>
-    <div class="rollActions need-add">${a
-      ? `<button type="button" data-act="unload" data-roll="${s.id}">Aus dem Drucker nehmen</button>`
-      : `<button type="button" data-act="loadRoll" data-roll="${s.id}">In Drucker einlegen</button>`}</div>
+    <div class="rollActions">${a
+      ? `<button type="button" class="need-printer" data-act="unload" data-roll="${s.id}">Aus dem Drucker nehmen</button>`
+      : `<button type="button" class="need-printer" data-act="loadRoll" data-roll="${s.id}">In Drucker einlegen</button>`}
+      <button type="button" class="need-rolls_remove dangerOutline" data-act="deleteRoll" data-roll="${s.id}">${ic("trash")} Rolle löschen</button></div>
     <div class="usage">${usage.length ? `<div class="muted">Letzte Drucke</div>` + usage.map((u) => `<div class="usageRow"><span>${fmtDate(u.created_at)}</span>
       <span class="grow">${esc(u.print_name || "Druck")}${u.status && u.status !== "completed" ? ` <span class="missing">(${u.status === "failed" ? "abgebrochen" : esc(u.status)})</span>` : ""}</span>
       <b>${Math.round(u.weight_used)} g</b>${u.cost ? `<span class="muted">${money(u.cost)}</span>` : ""}</div>`).join("")
@@ -1516,6 +1645,7 @@ document.addEventListener("click", (ev) => {
   const s = btn.dataset.roll && state.spools.find((x) => String(x.id) === btn.dataset.roll);
   if (act === "saveWeight" && s) run(() => saveWeight(s));
   else if (act === "unload" && s) run(() => unloadRoll(s));
+  else if (act === "deleteRoll" && s) run(() => deleteRoll(s));
   else if (act === "loadRoll" && s) openLoad({ spool: s });
   else if (act === "editJob") {
     const job = state.jobs?.get(btn.dataset.job);
@@ -1571,7 +1701,7 @@ function renderPlaces() {
       <span class="placeBig">${placeIconById(l.id, "big")}</span>
       <span class="brandCardName">${esc(l.name)}</span>
       <span class="muted">${count(l.id)} ${count(l.id) === 1 ? "Rolle" : "Rollen"}</span>
-      <button class="need-edit" data-act="place" data-place="${l.id}">Icon ändern</button>
+      <button class="need-places_edit" data-act="place" data-place="${l.id}">Icon ändern</button>
     </div>`).join("") : `<div class="emptyState">Noch keine Lagerplätze. Lege sie in Bambuddy unter Inventar → Lagerorte an.</div>`;
 }
 
@@ -1650,8 +1780,8 @@ $("#brandForm").addEventListener("submit", async (ev) => {
   }
   try {
     await api(`brands/${encodeURIComponent(currentBrand)}`, { method: "PUT", body: JSON.stringify({ website: form.website.value, name: currentBrand }) });
-    if (can(ADMIN) && form.removeLogo.checked && !file) await api(`logo/${encodeURIComponent(currentBrand)}`, { method: "DELETE" });
-    if (can(ADMIN) && file) await api(`logo/${encodeURIComponent(currentBrand)}`, { method: "POST", body: file, headers: { "Content-Type": file.type || "image/png" } });
+    if (form.removeLogo.checked && !file) await api(`logo/${encodeURIComponent(currentBrand)}`, { method: "DELETE" });
+    if (file) await api(`logo/${encodeURIComponent(currentBrand)}`, { method: "POST", body: file, headers: { "Content-Type": file.type || "image/png" } });
     state.logoVersion = Date.now();
     $("#brandDialog").close();
     state.brands = await api("brands").catch(() => state.brands);
@@ -1664,24 +1794,112 @@ $("#brandForm").addEventListener("submit", async (ev) => {
 
 // Benutzerverwaltung (nur Admin)
 async function loadUsers() {
-  if (!can(ADMIN)) return;
+  if (!isAdmin()) return;
   try {
-    const users = await api("users");
-    users.sort((a, b) => b.level - a.level || (a.name || "").localeCompare(b.name || "", "de"));
-    $("#userList").innerHTML = users.map((u) => `<div class="userRow">
+    const [users, g] = await Promise.all([api("users"), api("groups")]);
+    state.groupData = g;
+    const order = (id) => ["admin", "bearbeiten", "erfassen", "ansehen"].indexOf(id) + 1 || 9;
+    const groups = [...g.groups].sort((a, b) => order(a.id) - order(b.id) || a.name.localeCompare(b.name, "de"));
+    const nameOf = (id) => groups.find((x) => x.id === id)?.name || id;
+    $("#defaultGroup").innerHTML = groups.filter((x) => x.id !== "admin").map((x) => `<option value="${esc(x.id)}"${x.id === g.default ? " selected" : ""}>${esc(x.name)}</option>`).join("");
+    users.sort((a, b) => order(a.group) - order(b.group) || (a.name || "").localeCompare(b.name || "", "de"));
+    $("#userList").innerHTML = users.map((u) => {
+      const locked = u.source === "config_admin" || !u.id;
+      const options = `<option value="">Vorgabe${u.source === "app" ? "" : ` (${esc(nameOf(u.group))})`}</option>` +
+        groups.map((x) => `<option value="${esc(x.id)}"${u.source === "app" && x.id === u.group ? " selected" : ""}>${esc(x.name)}</option>`).join("");
+      return `<div class="userRow">
       <div class="grow"><b>${esc(u.name || u.login || "?")}</b>${u.login ? ` <span class="muted">Benutzername: ${esc(u.login)}</span>` : ""}
         <div class="muted">${u.last_seen ? "zuletzt da: " + esc(u.last_seen.replace("T", " ")) : "hat die App noch nie geöffnet"}</div></div>
-      <span class="levelTag">${LEVELS[u.level]}${u.listed ? "" : " <span class='muted'>(Standard)</span>"}</span>
-    </div>`).join("") || `<div class="emptyState">Noch niemand.</div>`;
+      ${locked ? `<span class="levelTag">${esc(nameOf(u.group))} <span class="muted">${u.source === "config_admin" ? "(aus Konfiguration)" : "(noch nie angemeldet)"}</span></span>`
+        : `<select class="userGroup" data-user="${esc(u.id)}">${options}</select>`}
+    </div>`;
+    }).join("") || `<div class="emptyState">Noch niemand.</div>`;
+    $("#groupList").innerHTML = groups.map((x) => groupCard(x, g.perms)).join("");
   } catch (e) {
     toast("Fehler: " + e.message);
   }
 }
 
+function groupCard(x, perms) {
+  const fixed = x.id === "admin" || x.id === "kein";
+  const checks = perms.map((p) => `<label class="permRow"><input type="checkbox" value="${p.key}"${x.id === "admin" || x.perms.includes(p.key) ? " checked" : ""}${fixed ? " disabled" : ""}> ${esc(p.label)}</label>`).join("");
+  return `<form class="groupCard" data-group="${esc(x.id)}">
+    ${fixed ? `<h3>${esc(x.name)} <span class="muted">fest</span></h3>` : `<label>Name<input name="name" value="${esc(x.name)}" maxlength="40" required></label>`}
+    <div class="permList">${checks}</div>
+    ${fixed ? "" : `<div class="actions"><button type="button" class="dangerOutline" data-group-del="${esc(x.id)}">${ic("trash")} Löschen</button><button type="submit" class="primary">Speichern</button></div>`}
+  </form>`;
+}
+
+$("#groupList").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = ev.target;
+  const perms = [...f.querySelectorAll(".permList input:checked")].map((i) => i.value);
+  try {
+    await api(`groups/${encodeURIComponent(f.dataset.group)}`, { method: "PUT", body: JSON.stringify({ name: f.name.value, perms }) });
+    toast(`Gruppe ${f.name.value} gespeichert`);
+    await loadUsers();
+  } catch (e) {
+    toast("Nicht gespeichert: " + e.message, 5000);
+  }
+});
+
+$("#groupList").addEventListener("click", async (ev) => {
+  const btn = ev.target.closest("[data-group-del]");
+  if (!btn) return;
+  const gid = btn.dataset.groupDel;
+  const name = state.groupData?.groups.find((x) => x.id === gid)?.name || gid;
+  if (!(await askConfirm("Gruppe löschen", `<p class="confirmNote">Die Gruppe <b>${esc(name)}</b> wird gelöscht. Ihre Mitglieder kommen in ihre Vorgabe-Gruppe.</p>`, "Löschen", true))) return;
+  try {
+    await api(`groups/${encodeURIComponent(gid)}`, { method: "DELETE" });
+    toast(`Gruppe ${name} gelöscht`);
+    await loadUsers();
+  } catch (e) {
+    toast("Nicht gelöscht: " + e.message, 5000);
+  }
+});
+
+$("#addGroup").addEventListener("click", async () => {
+  try {
+    // Neue Gruppe startet mit Ansehen, Einkaufsliste und Design, wie die Gruppe Ansehen.
+    await api("groups", { method: "POST", body: JSON.stringify({ name: "Neue Gruppe",
+      perms: ["tab_stock", "tab_shop", "tab_usage", "tab_brands", "tab_places", "tab_design", "shop_edit"] }) });
+    await loadUsers();
+    const forms = $("#groupList").querySelectorAll("form");
+    forms[forms.length - 1]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    forms[forms.length - 1]?.name?.select();
+  } catch (e) {
+    toast("Fehler: " + e.message);
+  }
+});
+
+$("#userList").addEventListener("change", async (ev) => {
+  const sel = ev.target.closest("select.userGroup");
+  if (!sel) return;
+  try {
+    await api(`users/${encodeURIComponent(sel.dataset.user)}`, { method: "PUT", body: JSON.stringify({ group: sel.value || null }) });
+    toast("Gruppe geändert");
+  } catch (e) {
+    toast("Nicht geändert: " + e.message, 5000);
+  }
+  await loadUsers();
+});
+
+$("#defaultGroup").addEventListener("change", async (ev) => {
+  try {
+    await api("groups/default", { method: "PUT", body: JSON.stringify({ group: ev.target.value }) });
+    toast("Standardgruppe geändert");
+  } catch (e) {
+    toast("Nicht geändert: " + e.message, 5000);
+  }
+  await loadUsers();
+});
+
 // Start: erst die eigenen Rechte holen, dann die Daten.
 (async () => {
-  state.me = await api("api/me").catch(() => ({ level: 0 }));
+  state.me = await api("api/me").catch(() => ({ level: 0, perms: [] }));
   if (state.me.theme) setTheme(state.me.theme);
+  applyDesign(state.me.design);
+  fillDesignForm();
   let view = state.me.view;
   try { view = view || localStorage.getItem("view"); } catch { /* egal */ }
   setView(view);
@@ -1692,7 +1910,7 @@ async function loadUsers() {
     for (const k of FILTER_KEYS) state.filter[k] = Array.isArray(saved[k]) ? saved[k] : saved[k] ? [saved[k]] : [];
     const tab = localStorage.getItem("tab");
     const btn = tab && document.querySelector(`.tab[data-tab="${tab}"]`);
-    if (btn && (tab !== "users" || can(ADMIN))) btn.click();
+    if (btn && getComputedStyle(btn).display !== "none") btn.click();
   } catch { /* egal */ }
   load();
 })();

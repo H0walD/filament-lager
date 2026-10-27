@@ -137,23 +137,93 @@ def get_logo(brand):
 # ---------- Benutzer und Rechte ----------
 #
 # Home Assistant schickt über Ingress, wer die Seite öffnet (X-Remote-User-*).
-# Stufen: 0 kein Zugriff, 1 ansehen, 2 erfassen, 3 bearbeiten, 4 Admin.
-# Die Rechte stehen in der App-Konfiguration („benutzer“, „standard_recht“);
-# users.json merkt sich nur, wer die App schon geöffnet hat.
+# Jeder Benutzer gehört zu einer Gruppe; eine Gruppe hat einzelne Rechte (Reiter sehen, Rollen buchen …).
+# Gruppen und Zuordnung verwaltet der Admin im Reiter Benutzer (groups.json). Die App-Konfiguration
+# („benutzer“, „standard_recht“) gilt weiter als Vorgabe: Wer dort admin ist, bleibt immer Admin.
+# users.json merkt sich, wer die App schon geöffnet hat, und die persönlichen Einstellungen.
 
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 USERS_LOCK = threading.Lock()
-NONE, VIEW, ADD, EDIT, ADMIN = 0, 1, 2, 3, 4
-LEVEL_NAMES = {"kein": NONE, "ansehen": VIEW, "erfassen": ADD, "bearbeiten": EDIT, "admin": ADMIN}
+NONE, VIEW, ADMIN = 0, 1, 4
 
 
-def configured_level(login, display):
-    opts = load_options()
-    for entry in opts.get("benutzer") or []:
+GROUPS_FILE = os.path.join(DATA_DIR, "groups.json")
+GROUPS_LOCK = threading.Lock()
+
+# Rechte in der Reihenfolge, wie sie im Reiter Benutzer stehen.
+PERMS = [
+    ("tab_stock", "Reiter Lager sehen"),
+    ("tab_shop", "Reiter Einkaufsliste sehen"),
+    ("tab_usage", "Reiter Verbrauch sehen"),
+    ("tab_brands", "Reiter Hersteller sehen"),
+    ("tab_places", "Reiter Lagerplätze sehen"),
+    ("tab_design", "Eigenes Design einstellen"),
+    ("shop_edit", "Einkaufsliste: eintragen, ändern, entfernen"),
+    ("rolls_add", "Rollen hinzufügen (+1, Neues Material, Eingetroffen ins Lager)"),
+    ("rolls_remove", "Rollen ausbuchen und löschen (−1, Löschen)"),
+    ("rolls_edit", "Einzelne Rolle: Restgewicht und Lagerplatz"),
+    ("sorts_edit", "Sorte bearbeiten (Name, Farbe, Preis …)"),
+    ("printer", "Rollen in den Drucker einlegen, Chip-Abgleich"),
+    ("usage_edit", "Verbrauch korrigieren"),
+    ("brands_edit", "Hersteller bearbeiten, Logos"),
+    ("places_edit", "Lagerplatz-Icons ändern"),
+]
+ALL_PERMS = [k for k, _ in PERMS]
+_TABS = ["tab_stock", "tab_shop", "tab_usage", "tab_brands", "tab_places", "tab_design"]
+# Ausgangslage, abgeleitet von den früheren Stufen. Rollen hinzufügen und entfernen darf anfangs nur Admin.
+SEED_GROUPS = {
+    "admin": {"name": "Admin", "perms": ALL_PERMS, "fixed": True},
+    "bearbeiten": {"name": "Bearbeiten", "perms": _TABS + ["shop_edit", "printer", "rolls_edit", "sorts_edit", "usage_edit", "brands_edit", "places_edit"]},
+    "erfassen": {"name": "Erfassen", "perms": _TABS + ["shop_edit", "printer", "rolls_edit"]},
+    "ansehen": {"name": "Ansehen", "perms": _TABS + ["shop_edit"]},
+    "kein": {"name": "Kein Zugriff", "perms": [], "fixed": True},
+}
+
+
+def load_groups():
+    try:
+        with open(GROUPS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    if not data.get("groups"):
+        data["groups"] = json.loads(json.dumps(SEED_GROUPS))
+    # Admin und „Kein Zugriff“ sind fest, auch wenn die Datei von Hand geändert wurde.
+    data["groups"]["admin"] = dict(SEED_GROUPS["admin"])
+    data["groups"]["kein"] = dict(SEED_GROUPS["kein"])
+    data.setdefault("members", {})
+    return data
+
+
+def save_groups(data):
+    tmp = GROUPS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, GROUPS_FILE)
+
+
+def default_group(groups):
+    gid = groups.get("default") or load_options().get("standard_recht") or "ansehen"
+    return gid if gid in groups["groups"] else "kein"
+
+
+def resolve_group(uid, login, display, groups=None):
+    """Gruppe eines Benutzers und woher sie kommt (config_admin, app, config, default)."""
+    groups = groups or load_groups()
+    configured = None
+    for entry in load_options().get("benutzer") or []:
         name = squash(entry.get("name"))
         if name and name in (squash(login), squash(display)):
-            return LEVEL_NAMES.get(entry.get("recht"), NONE), True
-    return LEVEL_NAMES.get(opts.get("standard_recht"), NONE), False
+            configured = entry.get("recht")
+            break
+    if configured == "admin":
+        return "admin", "config_admin"
+    gid = groups["members"].get(uid) if uid else None
+    if gid in groups["groups"]:
+        return gid, "app"
+    if configured in groups["groups"]:
+        return configured, "config"
+    return default_group(groups), "default"
 
 
 def load_users():
@@ -175,7 +245,7 @@ def current_user(headers):
     uid = headers.get("X-Remote-User-Id")
     if not uid:
         # Ohne Ingress-Kopfzeilen (z. B. direkter Test im Container) gibt es keine Benutzerverwaltung.
-        return {"id": None, "name": "lokal", "level": ADMIN}
+        return {"id": None, "name": "lokal", "level": ADMIN, "group": "admin", "group_name": "Admin", "perms": ALL_PERMS}
     name = headers.get("X-Remote-User-Display-Name") or headers.get("X-Remote-User-Name") or uid
     login = headers.get("X-Remote-User-Name") or ""
     now = time.strftime("%Y-%m-%dT%H:%M")
@@ -187,30 +257,88 @@ def current_user(headers):
             user.update(name=name, login=login, last_seen=now)
             user.pop("level", None)
             save_users(users)
-    level, listed = configured_level(login, name)
-    return {"id": uid, **user, "level": level, "listed": listed}
+    groups = load_groups()
+    gid, source = resolve_group(uid, login, name, groups)
+    perms = ALL_PERMS if gid == "admin" else [p for p in groups["groups"][gid].get("perms", []) if p in ALL_PERMS]
+    level = ADMIN if gid == "admin" else (VIEW if perms else NONE)
+    return {"id": uid, **user, "level": level, "group": gid, "group_name": groups["groups"][gid]["name"],
+            "group_source": source, "perms": perms}
 
 
-def required_level(method, path):
+DESIGN_FONTS = ("system", "helvetica", "verdana", "trebuchet", "rounded", "condensed", "georgia", "mono")
+
+
+def clean_design(d):
+    """Schriftarten und Schriftgrössen (in Prozent) eines Benutzers prüfen; leeres Objekt heisst Standard."""
+    if not isinstance(d, dict):
+        return None
+    out = {}
+    for key in ("title_font", "text_font"):
+        if key in d:
+            if d[key] not in DESIGN_FONTS:
+                return None
+            out[key] = d[key]
+    for key in ("title_size", "text_size", "desc_size"):
+        if key in d:
+            try:
+                v = int(d[key])
+            except (TypeError, ValueError):
+                return None
+            if not 70 <= v <= 160:
+                return None
+            out[key] = v
+    return out
+
+
+def required_perm(method, path, body=None):
+    """Welches Recht eine Anfrage braucht: None = jeder, "any" = irgendein Recht, "admin" = nur Admin."""
     # Seite, Skripte und Icon darf jeder laden, damit „Kein Zugriff“ angezeigt werden kann.
-    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/printers", "/printer-image/", "/usage-edits", "/places", "/place-image/", "/mdi"))):
-        return NONE
-    if path.startswith("/users"):
-        return ADMIN
-    if path.startswith("/logo/") and method != "GET":
-        return ADMIN
+    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/groups", "/printers", "/printer-image/", "/usage-edits", "/places", "/place-image/", "/mdi", "/shop-meta"))):
+        return None
+    if path.startswith(("/users", "/groups")):
+        return "admin"
     if method == "GET":
-        return VIEW
+        return "any"
+    if path.startswith(("/brands", "/logo/")):
+        return "brands_edit"
+    if path.startswith(("/places/", "/place-image/")):
+        return "places_edit"
+    if path.startswith(("/usage-edits", "/archive-sync")):
+        return "usage_edit"
+    if path.startswith("/reconcile"):
+        return "printer"
     if path.startswith("/api/inventory/"):
         rel = path[len("/api/inventory/"):]
-        if method == "POST" and rel in ("spools", "spools/bulk"):
-            return ADD
         if rel.startswith("shopping-list"):
-            return ADD
-        # Rolle in den Drucker einlegen oder herausnehmen gehört zum täglichen Erfassen.
-        if rel.startswith("assignments") and method in ("POST", "DELETE"):
-            return ADD
-    return EDIT
+            return "shop_edit"
+        if rel.startswith("assignments"):
+            return "printer"
+        if method == "POST" and rel in ("spools", "spools/bulk"):
+            return "rolls_add"
+        if (method == "POST" and rel.endswith("/archive")) or (method == "DELETE" and re.fullmatch(r"spools/\d+", rel)):
+            return "rolls_remove"
+        if method == "POST" and rel == "spools/bulk-update":
+            return "sorts_edit"
+        if method == "PATCH" and re.fullmatch(r"spools/\d+", rel):
+            # Restgewicht und Lagerplatz einer Rolle sind Alltag, alles andere ändert die Sorte.
+            try:
+                fields = set((json.loads(body or b"{}") or {}).keys())
+            except ValueError:
+                fields = {"?"}
+            return "rolls_edit" if fields <= {"weight_used", "location_id", "storage_location"} else "sorts_edit"
+    return "admin"
+
+
+def allowed_for(user, perm):
+    if perm is None:
+        return True
+    if user.get("group") == "admin":
+        return True
+    if perm == "admin":
+        return False
+    if perm == "any":
+        return bool(user.get("perms"))
+    return perm in user.get("perms", [])
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -243,10 +371,13 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def read_body(self):
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > MAX_UPLOAD:
-            raise ValueError("too large")
-        return self.rfile.read(length) if length else b""
+        # Zwischengespeichert: die Rechteprüfung liest den Inhalt mancher Anfragen schon vorher.
+        if not hasattr(self, "_body"):
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > MAX_UPLOAD:
+                raise ValueError("too large")
+            self._body = self.rfile.read(length) if length else b""
+        return self._body
 
     def route(self):
         if not self.allowed():
@@ -254,15 +385,22 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         query = self.path[len(path):]
         self.user = current_user(self.headers)
-        if self.user["level"] < required_level(self.command, path):
-            return self.send(403, {"detail": "Dafür fehlt dir die Berechtigung", "level": self.user["level"]})
         try:
+            body = self.read_body() if self.command == "PATCH" else None
+            if not allowed_for(self.user, required_perm(self.command, path, body)):
+                return self.send(403, {"detail": "Dafür fehlt dir die Berechtigung"})
             if path == "/api/me":
                 if self.command == "POST":
                     return self.save_theme()
-                return self.send(200, {"name": self.user["name"], "level": self.user["level"], "theme": self.user.get("theme"), "view": self.user.get("view")})
-            if path == "/users":
-                return self.users()
+                u = self.user
+                return self.send(200, {"name": u["name"], "level": u["level"], "group": u.get("group"), "group_name": u.get("group_name"),
+                                       "perms": u.get("perms", []), "theme": u.get("theme"), "view": u.get("view"), "design": u.get("design")})
+            if path == "/users" or path.startswith("/users/"):
+                return self.users(path[len("/users/"):] if path.startswith("/users/") else None)
+            if path == "/groups" or path.startswith("/groups/"):
+                return self.groups(path[len("/groups/"):] if path.startswith("/groups/") else None)
+            if path == "/shop-meta":
+                return self.send(200, load_shop_meta())
             if path.startswith("/api/inventory/"):
                 return self.proxy(path[len("/api/"):] + query)
             if path == "/api/status":
@@ -348,9 +486,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def proxy(self, rel):
         body = self.read_body() if self.command in ("POST", "PUT", "PATCH", "DELETE") else None
+        keep = None
+        is_shop_add = self.command == "POST" and rel.split("?")[0] == "inventory/shopping-list"
+        if is_shop_add and body:
+            # Mengenänderung legt den Eintrag neu an; „_keep“ nennt den alten, damit der Ersteller bleibt.
+            try:
+                payload = json.loads(body)
+                keep = payload.pop("_keep", None)
+                body = json.dumps(payload).encode()
+            except ValueError:
+                pass
         status, data, ctype = self.call_bambuddy(
             self.command, rel, body or None, self.headers.get("Content-Type")
         )
+        if is_shop_add and status in (200, 201):
+            try:
+                note_shop_entry(json.loads(data).get("id"), self.user, keep)
+            except (ValueError, AttributeError):
+                pass
         self.send(status, data, ctype)
 
     def usage_edits(self):
@@ -451,7 +604,16 @@ class Handler(BaseHTTPRequestHandler):
         data = json.loads(self.read_body() or b"{}") or {}
         allowed = {"theme": ("light", "dark"), "view": ("tiles", "list")}
         prefs = {k: data[k] for k in allowed if k in data}
-        if not prefs or any(v not in allowed[k] for k, v in prefs.items()):
+        if any(v not in allowed[k] for k, v in prefs.items()):
+            return self.send(400, {"detail": "Unbekannte Einstellung"})
+        if "design" in data:
+            if not allowed_for(self.user, "tab_design"):
+                return self.send(403, {"detail": "Dafür fehlt dir die Berechtigung"})
+            design = clean_design(data["design"])
+            if design is None:
+                return self.send(400, {"detail": "Ungültige Design-Einstellung"})
+            prefs["design"] = design
+        if not prefs:
             return self.send(400, {"detail": "Unbekannte Einstellung"})
         if self.user.get("id"):
             with USERS_LOCK:
@@ -460,23 +622,75 @@ class Handler(BaseHTTPRequestHandler):
                 save_users(users)
         return self.send(200, prefs)
 
-    def users(self):
-        # Nur anzeigen: Rechte werden in der App-Konfiguration von Home Assistant vergeben.
+    def users(self, uid):
+        if self.command == "PUT" and uid:
+            # Gruppe eines Benutzers ändern; leer = wieder nach Vorgabe aus der Konfiguration.
+            gid = (json.loads(self.read_body() or b"{}") or {}).get("group")
+            with GROUPS_LOCK:
+                groups = load_groups()
+                if gid and gid not in groups["groups"]:
+                    return self.send(400, {"detail": "Unbekannte Gruppe"})
+                if uid == self.user.get("id") and gid != "admin" and self.user.get("group_source") != "config_admin":
+                    return self.send(400, {"detail": "Du kannst dich nicht selbst aus der Gruppe Admin nehmen"})
+                if gid:
+                    groups["members"][uid] = gid
+                else:
+                    groups["members"].pop(uid, None)
+                save_groups(groups)
+            return self.send(200, {"ok": True})
         if self.command != "GET":
-            return self.send(405, {"detail": "Rechte bitte in der App-Konfiguration ändern"})
+            return self.send(405, {"detail": "Methode nicht erlaubt"})
+        groups = load_groups()
         result = []
         seen = set()
         for uid, u in load_users().items():
-            level, listed = configured_level(u.get("login"), u.get("name"))
+            gid, source = resolve_group(uid, u.get("login"), u.get("name"), groups)
             result.append({"id": uid, "name": u.get("name"), "login": u.get("login"), "last_seen": u.get("last_seen"),
-                           "level": level, "listed": listed})
+                           "group": gid, "source": source})
             seen.update({squash(u.get("login")), squash(u.get("name"))})
         # Eingetragene, die die App noch nie geöffnet haben, trotzdem zeigen.
         for entry in load_options().get("benutzer") or []:
             if squash(entry.get("name")) not in seen:
+                gid = entry.get("recht") if entry.get("recht") in groups["groups"] else "kein"
                 result.append({"id": None, "name": entry.get("name"), "login": entry.get("name"), "last_seen": None,
-                               "level": LEVEL_NAMES.get(entry.get("recht"), NONE), "listed": True})
+                               "group": gid, "source": "config_admin" if gid == "admin" else "config"})
         self.send(200, result)
+
+    def groups(self, gid):
+        with GROUPS_LOCK:
+            data = load_groups()
+            if self.command == "GET":
+                return self.send(200, {"groups": [{"id": k, **v} for k, v in data["groups"].items()],
+                                       "default": default_group(data), "perms": [{"key": k, "label": l} for k, l in PERMS]})
+            req = json.loads(self.read_body() or b"{}") or {}
+            if gid == "default" and self.command == "PUT":
+                if req.get("group") not in data["groups"] or req.get("group") == "admin":
+                    return self.send(400, {"detail": "Diese Gruppe geht nicht als Standard"})
+                data["default"] = req["group"]
+            elif self.command in ("POST", "PUT"):
+                if gid in ("admin", "kein"):
+                    return self.send(400, {"detail": "Diese Gruppe ist fest"})
+                name = (req.get("name") or "").strip()[:40]
+                if not name:
+                    return self.send(400, {"detail": "Bitte einen Namen eingeben"})
+                perms = [p for p in ALL_PERMS if p in (req.get("perms") or [])]
+                if self.command == "POST":
+                    gid = "g%d" % int(time.time() * 1000)
+                elif gid not in data["groups"]:
+                    return self.send(404, {"detail": "Gruppe nicht gefunden"})
+                data["groups"][gid] = {"name": name, "perms": perms}
+            elif self.command == "DELETE" and gid:
+                if gid in ("admin", "kein") or gid not in data["groups"]:
+                    return self.send(400, {"detail": "Diese Gruppe kann nicht gelöscht werden"})
+                del data["groups"][gid]
+                # Mitglieder fallen auf die Vorgabe zurück.
+                data["members"] = {u: g for u, g in data["members"].items() if g != gid}
+                if data.get("default") == gid:
+                    data.pop("default")
+            else:
+                return self.send(405, {"detail": "Methode nicht erlaubt"})
+            save_groups(data)
+        self.send(200, {"ok": True, "id": gid})
 
     def reconcile(self):
         if self.command == "GET":
@@ -626,6 +840,38 @@ def save_merges(data):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
     os.replace(tmp, MERGES_FILE)
+
+
+SHOP_META_FILE = os.path.join(DATA_DIR, "shop_meta.json")
+SHOP_META_LOCK = threading.Lock()
+
+
+def load_shop_meta():
+    try:
+        with open(SHOP_META_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def note_shop_entry(item_id, user, keep=None):
+    """Merken, wer einen Eintrag auf die Einkaufsliste gesetzt hat und wann."""
+    if item_id is None:
+        return
+    with SHOP_META_LOCK:
+        meta = load_shop_meta()
+        old = meta.pop(str(keep), None) if keep is not None else None
+        meta[str(item_id)] = old or {"by": user.get("name") or "lokal", "at": time.strftime("%Y-%m-%dT%H:%M")}
+        if old:
+            meta[str(item_id)]["changed_by"] = user.get("name") or "lokal"
+            meta[str(item_id)]["changed_at"] = time.strftime("%Y-%m-%dT%H:%M")
+        # Nicht endlos wachsen lassen.
+        if len(meta) > 500:
+            meta = dict(sorted(meta.items(), key=lambda kv: kv[1].get("at", ""))[-500:])
+        tmp = SHOP_META_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, SHOP_META_FILE)
 
 
 def bambuddy(method, rel, payload=None):

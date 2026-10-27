@@ -1,7 +1,12 @@
 <!doctype html>
 <html lang="de" data-theme="dark">
 <head>
-<script>try { document.documentElement.dataset.theme = localStorage.getItem("theme") || "dark"; } catch (e) { /* bleibt dunkel */ }</script>
+<script>try {
+  document.documentElement.dataset.theme = localStorage.getItem("theme") || "dark";
+  // Schriften schon vor dem ersten Zeichnen setzen, damit nichts springt.
+  const vars = JSON.parse(localStorage.getItem("designVars") || "{}");
+  for (const k in vars) document.documentElement.style.setProperty(k, vars[k]);
+} catch (e) { /* Standard */ }</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Filament-Lager</title>
@@ -17,12 +22,13 @@
     <button id="themeBtn" class="themeBtn" type="button" title="Hell oder dunkel"></button>
   </div>
   <nav class="tabs">
-    <button class="tab active" data-tab="stock">Lager <span id="stockCount" class="pill"></span></button>
-    <button class="tab" data-tab="shop">Einkaufsliste <span id="shopCount" class="pill"></span></button>
-    <button class="tab" data-tab="usage">Verbrauch</button>
-    <button class="tab" data-tab="brands">Hersteller <span id="brandCount" class="pill"></span></button>
-    <button class="tab" data-tab="places">Lagerplätze</button>
+    <button class="tab active need-tab_stock" data-tab="stock">Lager <span id="stockCount" class="pill"></span></button>
+    <button class="tab need-tab_shop" data-tab="shop">Einkaufsliste <span id="shopCount" class="pill"></span></button>
+    <button class="tab need-tab_usage" data-tab="usage">Verbrauch</button>
+    <button class="tab need-tab_brands" data-tab="brands">Hersteller <span id="brandCount" class="pill"></span></button>
+    <button class="tab need-tab_places" data-tab="places">Lagerplätze</button>
     <button class="tab need-admin" data-tab="users">Benutzer</button>
+    <button class="tab need-tab_design" data-tab="design">Design</button>
   </nav>
 </header>
 
@@ -36,7 +42,7 @@
         <button id="viewTiles" data-view="tiles" title="Kacheln"></button>
         <button id="viewList" data-view="list" title="Liste"></button>
       </div>
-      <button id="addNew" class="primary need-add">+ Neues Material</button>
+      <button id="addNew" class="primary need-rolls_add">+ Neues Material</button>
     </div>
     <div id="chipBox" class="chipBox hidden"></div>
     <div id="slotBox" class="chipBox hidden"></div>
@@ -71,7 +77,7 @@
     <div class="toolbar">
       <span class="muted">Der Lagerbestand neben jedem Eintrag ist immer aktuell.</span>
       <span class="spacer"></span>
-      <button id="clearDone" class="need-add">Erledigte entfernen</button>
+      <button id="clearDone" class="need-shop_edit">Erledigte entfernen</button>
     </div>
     <div id="shopList"></div>
   </section>
@@ -80,7 +86,7 @@
     <div class="toolbar">
       <span class="muted">Tippe auf einen Hersteller, um Webseite oder Logo zu ändern.</span>
       <span class="spacer"></span>
-      <button id="addBrand" class="primary need-edit">+ Neuer Hersteller</button>
+      <button id="addBrand" class="primary need-brands_edit">+ Neuer Hersteller</button>
     </div>
     <div id="brandGrid" class="brandGrid"></div>
   </section>
@@ -93,10 +99,41 @@
   </section>
 
   <section id="tab-users" class="hidden">
-    <div class="toolbar"><span class="muted">Rechte stellst du in Home Assistant ein: <b>Einstellungen → Apps → Filament-Lager → Konfiguration</b>, Feld <b>benutzer</b>. Als Name den Benutzernamen von hier eintragen. Wer nicht eingetragen ist, bekommt das <b>standard_recht</b>.</span></div>
+    <h2 class="sectionHead">Benutzer</h2>
+    <p class="muted">Wähle für jeden Benutzer eine Gruppe. Wer in der App-Konfiguration von Home Assistant als <b>admin</b> eingetragen ist, bleibt immer Admin, so kann sich niemand aussperren.</p>
+    <div class="row defaultRow"><label>Neue Benutzer kommen in die Gruppe<select id="defaultGroup"></select></label></div>
     <div id="userList"></div>
-    <div class="muted" style="margin-top:12px">
-      <b>kein</b>: kein Zugriff · <b>ansehen</b>: nur schauen · <b>erfassen</b>: Rollen einbuchen, in den Drucker einlegen, Einkaufsliste · <b>bearbeiten</b>: zusätzlich Sorten, Restgewicht und Preise ändern, ausbuchen, Hersteller · <b>admin</b>: zusätzlich diese Übersicht
+    <h2 class="sectionHead">Gruppen und Rechte</h2>
+    <p class="muted">Admin hat immer alle Rechte und verwaltet als Einziger Benutzer und Gruppen.</p>
+    <div class="toolbar"><button id="addGroup" type="button" class="primary">+ Neue Gruppe</button></div>
+    <div id="groupList" class="groupGrid"></div>
+  </section>
+
+  <section id="tab-design" class="hidden">
+    <p class="muted">Schriften für dich einstellen. Die Einstellung gilt für deinen Benutzer auf allen Geräten.</p>
+    <div class="designGrid">
+      <form id="designForm" class="designCard">
+        <h3>Schriftarten</h3>
+        <label>Titel<select name="title_font"></select></label>
+        <label>Text und Beschreibungen<select name="text_font"></select></label>
+        <h3>Schriftgrössen</h3>
+        <label>Titel <span class="designVal" data-for="title_size"></span><input name="title_size" type="range" min="70" max="160" step="5"></label>
+        <label>Text <span class="designVal" data-for="text_size"></span><input name="text_size" type="range" min="70" max="160" step="5"></label>
+        <label>Beschreibungen <span class="designVal" data-for="desc_size"></span><input name="desc_size" type="range" min="70" max="160" step="5"></label>
+        <div class="actions"><button type="button" id="designReset">Auf Standard zurücksetzen</button></div>
+      </form>
+      <div class="designCard">
+        <h3>Vorschau</h3>
+        <div class="brandHead"><h2>Bambu Lab</h2><span class="muted">8 Rollen</span></div>
+        <h3 class="matHead">PLA <span class="muted">7 Rollen</span></h3>
+        <div class="tile" style="max-width:260px">
+          <div class="tileTop"><span class="swatch" style="background:#ff8a1c"></span>
+            <div class="grow"><div class="tileName">Pumpkin Orange</div><div class="tileSub">PLA Basic</div></div></div>
+          <div class="bar"><span style="width:85%"></span></div>
+          <div class="tileInfo"><span><b>2</b> im Lager</span><span>1,9 kg</span></div>
+          <div class="tileMeta"><span>1 angebrochen</span><span>Regal oben</span><span>zuletzt 25.10.2026</span></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -163,8 +200,8 @@
     <label id="brandNameField" class="hidden">Name des Herstellers<input name="brandname" autocomplete="off"></label>
     <div class="brandPreview"><span id="brandLogoPreview"></span></div>
     <label>Webseite des Herstellers<input name="website" placeholder="z. B. polymaker.com" autocomplete="off"></label>
-    <label class="need-admin">Logo hochladen (PNG, JPG, WebP)<input name="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
-    <label class="need-admin removeLogoRow"><span><input name="removeLogo" type="checkbox"> Vorhandenes Logo entfernen</span></label>
+    <label class="need-brands_edit">Logo hochladen (PNG, JPG, WebP)<input name="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+    <label class="need-brands_edit removeLogoRow"><span><input name="removeLogo" type="checkbox"> Vorhandenes Logo entfernen</span></label>
     <div class="actions">
       <button value="cancel" formnovalidate>Abbrechen</button>
       <button value="ok" class="primary">Speichern</button>
@@ -199,6 +236,7 @@
     </div>
     <p id="editError" class="error"></p>
     <div class="actions">
+      <button type="button" id="deleteSort" class="need-rolls_remove dangerOutline actionsLeft">Ganze Sorte löschen</button>
       <button value="cancel" formnovalidate>Abbrechen</button>
       <button value="ok" class="primary">Speichern</button>
     </div>

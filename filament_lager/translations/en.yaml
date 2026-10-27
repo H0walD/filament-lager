@@ -8,8 +8,9 @@ configuration:
   benutzer:
     name: Users and permissions
     description: >-
-      One entry per person with the Home Assistant username and a permission:
-      kein, ansehen, erfassen, bearbeiten or admin.
+      Add at least yourself as admin; anyone listed as admin here always stays admin.
+      Groups and permissions are managed in the app on the Benutzer tab;
+      other entries here only act as a default.
   standard_recht:
     name: Default permission
-    description: Permission for everyone not listed above.
+    description: Default for new users until a default group is chosen in the app.

@@ -1,5 +1,19 @@
 # Änderungen
 
+## 1.5.0
+
+- Benutzergruppen mit einzelnen Rechten im Reiter Benutzer: welche Reiter eine Gruppe sieht und was sie darf (Einkaufsliste, Rollen hinzufügen, ausbuchen/löschen, Restgewicht und Lagerplatz, Sorten, Drucker, Verbrauch, Hersteller, Lagerplatz-Icons, Design)
+- Admin hat immer alle Rechte; wer in der Konfiguration als admin steht, bleibt immer Admin
+- Bestehende Rechte aus der Konfiguration werden als Gruppen Ansehen, Erfassen und Bearbeiten übernommen; Rollen hinzufügen und entfernen darf anfangs nur Admin
+- Einkaufsliste zeigt, wer einen Eintrag wann gemacht hat
+
+## 1.4.0
+
+- Neuer Reiter „Design“: Schriftart für Titel und für Text, Schriftgrösse für Titel, Text und Beschreibungen einzeln; gilt pro Benutzer auf allen Geräten, mit Vorschau
+- Einzelne Rolle in der Rollenübersicht löschen (endgültig, mit Bestätigung)
+- Ganze Sorte löschen unter „Sorte bearbeiten“, zur Sicherheit mit Wisch-Bestätigung
+- Ausbuchen-Knopf heisst jetzt „−1“
+
 ## 1.3.14
 
 - Kein Hinweis „Rolle im Drucker ohne Zuordnung“ mehr für die externe Spule: Der Drucker hat dort keinen Sensor und meldet den zuletzt eingestellten Filamenttyp auch ohne Rolle

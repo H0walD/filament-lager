@@ -8,20 +8,18 @@
 2. Hier im Reiter **Konfiguration** eintragen:
    - **Bambuddy-Adresse**, z. B. `http://192.168.1.50:8000`
    - **API-Schlüssel**
-   - Unter **Benutzer und Rechte** dich selbst mit deinem Home-Assistant-Benutzernamen und dem Recht `admin`
+   - Unter **Benutzer und Rechte** dich selbst mit deinem Home-Assistant-Benutzernamen und dem Recht `admin` (alle anderen danach in der App im Reiter Benutzer)
 3. Speichern, im Reiter Info starten und „In der Seitenleiste anzeigen“ einschalten.
 
-## Rechte
+## Benutzergruppen und Rechte
 
-| Recht | Darf |
-|---|---|
-| `kein` | nichts |
-| `ansehen` | alles ansehen |
-| `erfassen` | Rollen einbuchen, in den Drucker einlegen und herausnehmen, Einkaufsliste pflegen |
-| `bearbeiten` | zusätzlich Sorten ändern, Restgewicht und Preise ändern, ausbuchen, Hersteller-Webseiten pflegen |
-| `admin` | zusätzlich Logos hochladen und Übersicht „Benutzer“ |
+Im Reiter **Benutzer** (nur Admin) ordnest du jedem Benutzer eine Gruppe zu und stellst pro Gruppe ein, was sie darf: welche Reiter sie sieht, Einkaufsliste, Rollen hinzufügen, Rollen ausbuchen und löschen, Restgewicht und Lagerplatz, Sorten bearbeiten, Drucker, Verbrauch korrigieren, Hersteller und Lagerplatz-Icons.
 
-Wer nicht unter **Benutzer und Rechte** steht, bekommt das **Standard-Recht**. Änderungen gelten sofort.
+- **Admin** hat immer alle Rechte und verwaltet als Einziger Benutzer und Gruppen.
+- Wer hier unter **Benutzer und Rechte** als `admin` eingetragen ist, bleibt immer Admin, so kann sich niemand aussperren.
+- Die übrigen Einträge und das **Standard-Recht** gelten als Vorgabe, solange in der App keine Gruppe gewählt ist. Die Gruppen „Ansehen“, „Erfassen“ und „Bearbeiten“ heissen wie die Rechte hier.
+- Rollen hinzufügen und entfernen darf anfangs nur Admin; du kannst es jeder Gruppe geben.
+- Änderungen gelten sofort. Die App prüft die Rechte auch auf dem Server.
 
 ## RFID-Rollen
 

@@ -8,8 +8,9 @@ configuration:
   benutzer:
     name: Benutzer und Rechte
     description: >-
-      Pro Person den Home-Assistant-Benutzernamen und das Recht eintragen:
-      kein, ansehen, erfassen, bearbeiten oder admin.
+      Hier mindestens dich selbst als admin eintragen. Wer hier admin ist, bleibt immer Admin.
+      Alle weiteren Rechte und Gruppen stellst du in der App im Reiter Benutzer ein;
+      die übrigen Einträge hier gelten nur als Vorgabe.
   standard_recht:
     name: Standard-Recht
-    description: Recht für alle, die oben nicht eingetragen sind.
+    description: Vorgabe für neue Benutzer, bis in der App eine Standardgruppe gewählt ist.
