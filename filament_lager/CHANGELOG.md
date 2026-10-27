@@ -1,5 +1,22 @@
 # Änderungen
 
+## 1.7.0
+
+- Reiter Verbrauch: neuer Abschnitt „Drucke ohne Abbuchung“. Die App vergleicht Bambuddys Archiv der letzten 30 Tage mit den Abbuchungen und zeigt fertige oder abgebrochene Drucke, bei denen keine Rolle belastet wurde (z. B. weil keine Rolle zugeordnet war)
+- „Rolle nachtragen“ öffnet den Druck mit der Menge aus dem Archiv und schlägt zuerst eine Rolle vor, die in diesem Drucker steckt und zum Material passt; „Ausblenden“ für Drucke, die nicht abgebucht werden sollen
+- Korrigieren: Jede Abbuchung lässt sich auf eine andere Rolle umbuchen. Die falsche Rolle bekommt die Menge zurück, die richtige wird belastet
+- Braucht das Recht „Verbrauch korrigieren“; anzeigen dürfen alle, die den Reiter Verbrauch sehen
+
+## 1.6.1
+
+- Hinweis „Rolle im Drucker ohne Zuordnung“ wieder für die externe Spule bei Druckern ohne AMS (z. B. A1 Mini); bei Druckern mit AMS bleibt er dort aus
+
+## 1.6.0
+
+- 13 Schriftarten zur Auswahl, in der App mitgeliefert, damit sie auf jedem Gerät gleich aussehen: Inter, Roboto, Open Sans, Source Sans 3, Atkinson Hyperlegible, Lexend, Nunito, Comfortaa, Montserrat, Oswald, Merriweather, Roboto Slab, JetBrains Mono (plus Standard des Geräts)
+- Schriftgrössen relativ zur Grundschrift des Geräts (rem): Wer dort grössere Schrift eingestellt hat, bekommt sie auch in der App
+- Aktiver Reiter oben als gefüllte grüne Fläche, deutlich besser zu sehen
+
 ## 1.5.0
 
 - Benutzergruppen mit einzelnen Rechten im Reiter Benutzer: welche Reiter eine Gruppe sieht und was sie darf (Einkaufsliste, Rollen hinzufügen, ausbuchen/löschen, Restgewicht und Lagerplatz, Sorten, Drucker, Verbrauch, Hersteller, Lagerplatz-Icons, Design)

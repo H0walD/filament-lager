@@ -95,16 +95,22 @@ function setView(view, save) {
 }
 
 // ---------- Design: Schriftarten und -grössen je Benutzer ----------
-// Nur Schriften, die auf den Geräten schon da sind: die App lädt nichts aus dem Internet.
+// Schriften liegen in der App (www/fonts), sehen also auf jedem Gerät gleich aus; geladen wird nichts aus dem Internet.
 const FONTS = {
-  system: ["Standard (System)", 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'],
-  helvetica: ["Helvetica / Arial", '"Helvetica Neue", Helvetica, Arial, sans-serif'],
-  verdana: ["Verdana (gut lesbar)", "Verdana, Geneva, Tahoma, sans-serif"],
-  trebuchet: ["Trebuchet", '"Trebuchet MS", "Lucida Grande", sans-serif'],
-  rounded: ["Rundlich", 'ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Varela Round", system-ui, sans-serif'],
-  condensed: ["Schmal", '"Arial Narrow", "Roboto Condensed", "Helvetica Neue", sans-serif-condensed, sans-serif'],
-  georgia: ["Georgia (mit Serifen)", 'Georgia, "Times New Roman", serif'],
-  mono: ["Schreibmaschine", 'ui-monospace, Menlo, Consolas, "Courier New", monospace'],
+  system: ["Standard des Geräts", 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'],
+  inter: ["Inter", '"Inter FL", system-ui, sans-serif'],
+  roboto: ["Roboto", '"Roboto FL", system-ui, sans-serif'],
+  "open-sans": ["Open Sans", '"Open Sans FL", system-ui, sans-serif'],
+  "source-sans-3": ["Source Sans 3", '"Source Sans 3 FL", system-ui, sans-serif'],
+  atkinson: ["Atkinson Hyperlegible (besonders gut lesbar)", '"Atkinson Hyperlegible Next FL", system-ui, sans-serif'],
+  lexend: ["Lexend (ruhig, gut lesbar)", '"Lexend FL", system-ui, sans-serif'],
+  nunito: ["Nunito (rundlich)", '"Nunito FL", system-ui, sans-serif'],
+  comfortaa: ["Comfortaa (verspielt rund)", '"Comfortaa FL", system-ui, sans-serif'],
+  montserrat: ["Montserrat (geometrisch)", '"Montserrat FL", system-ui, sans-serif'],
+  oswald: ["Oswald (schmal, für Titel)", '"Oswald FL", "Arial Narrow", sans-serif'],
+  merriweather: ["Merriweather (mit Serifen)", '"Merriweather FL", Georgia, serif'],
+  "roboto-slab": ["Roboto Slab (Serifen, technisch)", '"Roboto Slab FL", Georgia, serif'],
+  "jetbrains-mono": ["JetBrains Mono (Schreibmaschine)", '"JetBrains Mono FL", ui-monospace, monospace'],
 };
 const DESIGN_DEFAULT = { title_font: "system", text_font: "system", title_size: 100, text_size: 100, desc_size: 100 };
 
@@ -366,6 +372,7 @@ async function load(quiet) {
     buildGroups();
     banner(null);
     render();
+    loadUnbooked();
     $("#updated").textContent = "Stand " + new Date().toLocaleString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
   } catch (e) {
     if (!quiet || !state.loaded) await explainError();
@@ -946,6 +953,7 @@ document.addEventListener("click", (ev) => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
     for (const name of ["stock", "shop", "usage", "brands", "places", "users", "design"]) $("#tab-" + name).classList.toggle("hidden", btn.dataset.tab !== name);
     if (btn.dataset.tab === "users") loadUsers();
+    if (btn.dataset.tab === "usage") loadUnbooked();
     try { localStorage.setItem("tab", btn.dataset.tab); } catch { /* egal */ }
     return;
   }
@@ -1304,6 +1312,11 @@ function usageJobs(list) {
     const h = hist.get(u.id) || {};
     jobs.get(key).items.push({ ...u, before: h.before, after: h.after });
   }
+  // Umgebuchte Abbuchungen stehen bei der falschen Rolle auf 0 g; die zeigen wir nicht mehr an.
+  for (const j of jobs.values()) {
+    const rest = j.items.filter((u) => !(u.edited && !u.weight_used));
+    if (rest.length) j.items = rest;
+  }
   state.jobs = jobs;
   return [...jobs.values()];
 }
@@ -1330,6 +1343,49 @@ function mergeUsage(raw, edits) {
   return list;
 }
 
+// ---------- Drucke ohne Abbuchung (aus Bambuddys Archiv) ----------
+// Z. B. wenn beim Druck keine Rolle zugeordnet war. Nur laden, wenn der Reiter offen ist: Das Archiv ist gross.
+
+async function loadUnbooked() {
+  if (!has("tab_usage") || $("#tab-usage").classList.contains("hidden")) return;
+  try {
+    state.unbooked = (await api("unbooked")).prints || [];
+  } catch {
+    state.unbooked = [];
+  }
+  renderUnbooked();
+}
+
+function renderUnbooked() {
+  const box = $("#unbookedBox");
+  const list = state.unbooked || [];
+  if (!list.length) return box.classList.add("hidden");
+  const printerName = (id) => ((state.printers || []).length > 1 ? (state.printers.find((p) => p.id === id)?.name || "") : "");
+  box.innerHTML = `<h3>Drucke ohne Abbuchung</h3>
+    <p class="muted">Diese Drucke stehen in Bambuddys Archiv, aber bei keiner Rolle wurde Filament abgezogen. Meist war im Drucker keine Rolle zugeordnet.</p>` +
+    list.map((a) => {
+      const status = a.status && a.status !== "completed" ? ` <span class="missing">(${a.status === "failed" ? "abgebrochen" : esc(a.status)})</span>` : "";
+      const rgba = /^#?[0-9a-f]{6}/i.test(a.filament_color || "") ? a.filament_color.replace("#", "").slice(0, 6) + "FF" : "";
+      return `<div class="chipRow unclear">${dot(rgba)}<span class="grow"><b>${esc(a.print_name || "Druck")}</b>${status}
+        <span class="muted"> · ${fmtDateTime(a.completed_at)}${printerName(a.printer_id) ? " · " + esc(printerName(a.printer_id)) : ""} · ${Math.round(a.grams * 10) / 10} g${a.filament_type ? " " + esc(a.filament_type) : ""}</span></span>
+        <span class="unbookedActs"><button class="primary need-usage_edit" data-act="bookArchive" data-arch="${a.id}">Rolle nachtragen</button>
+        <button class="need-usage_edit" data-act="dismissArchive" data-arch="${a.id}" title="Nicht abbuchen, z. B. fremdes Filament">Ausblenden</button></span></div>`;
+    }).join("");
+  box.classList.remove("hidden");
+}
+
+function bookArchive(a) {
+  openJobEdit({ print_name: a.print_name, printer_id: a.printer_id, created_at: a.completed_at, status: a.status, items: [], archive: a });
+}
+
+async function dismissArchive(a) {
+  const ok = await askConfirm("Druck ausblenden", `<p><b>${esc(a.print_name || "Druck")}</b> · ${fmtDateTime(a.completed_at)}</p><p class="confirmNote">Der Druck wird nicht abgebucht und hier nicht mehr angezeigt. In Bambuddys Archiv bleibt er.</p>`, "Ausblenden");
+  if (!ok) return;
+  await api("usage-edits", { method: "POST", body: JSON.stringify({ dismiss: a.id }) });
+  state.unbooked = (state.unbooked || []).filter((x) => x.id !== a.id);
+  renderUnbooked();
+}
+
 $("#usagePeriod").addEventListener("change", renderUsage);
 $("#usageSearch").addEventListener("input", renderUsage);
 
@@ -1339,14 +1395,27 @@ let editJob = null;
 
 function openJobEdit(job) {
   editJob = job;
+  const a = job.archive;
+  $("#jobHeading").textContent = a ? "Abbuchung nachtragen" : "Abbuchung korrigieren";
   $("#jobTitle").textContent = `${job.print_name || "Druck"} · ${fmtDateTime(job.created_at)}`;
+  // Je Rolle: Menge ändern oder auf eine andere Rolle umbuchen, wenn beim Druck die falsche zugeordnet war.
   $("#jobRows").innerHTML = job.items.map((u, i) => `<div class="jobEditRow">${dot(u.spool?.rgba)}
-      <span class="grow">${esc(u.spool ? rollName(u.spool) : "Unbekannte Rolle")} · Rolle ${u.spool_id}${u.edited && !u.manual ? `<div class="muted">Bambuddy: ${Math.round(u.original)} g</div>` : ""}${u.manual ? `<div class="muted">von Hand nachgetragen</div>` : ""}</span>
+      <span class="grow">${esc(u.spool ? rollName(u.spool) : "Unbekannte Rolle")} · Rolle ${u.spool_id}${u.edited && !u.manual ? `<div class="muted">Bambuddy: ${Math.round(u.original)} g</div>` : ""}${u.manual ? `<div class="muted">von Hand nachgetragen</div>` : ""}
+        <select class="moveSel" data-move="${i}" title="Auf eine andere Rolle umbuchen"><option value="">Rolle stimmt</option>${preferredRoll(state.spools.filter((s) => s.id !== u.spool_id)).map((s) => rollOption(s).replace(/^<option value="(\d+)">/, '<option value="$1">Umbuchen auf: ')).join("")}</select></span>
       <label class="narrow">Gramm<input type="number" min="0" max="5000" step="0.1" data-item="${i}" value="${Math.round(u.weight_used * 10) / 10}"></label></div>`).join("");
+  $("#jobRows").classList.toggle("hidden", !job.items.length);
+  $("#jobAddHead").textContent = a ? "Welche Rolle wurde verwendet?" : "Rolle nachtragen, die nicht abgebucht wurde";
   const used = new Set(job.items.map((u) => u.spool_id));
-  const rolls = preferredRoll(state.spools.filter((s) => !used.has(s.id)));
-  $("#jobForm").addRoll.innerHTML = `<option value="">— keine —</option>` + rolls.map(rollOption).join("");
-  $("#jobForm").addGrams.value = "";
+  let rolls = preferredRoll(state.spools.filter((s) => !used.has(s.id)));
+  if (a) {
+    // Zuerst Rollen, die in diesem Drucker stecken, dann gleiches Material.
+    const mat = norm(a.filament_type || "");
+    const here = new Set((state.assignments || []).filter((x) => x.printer_id === a.printer_id).map((x) => x.spool_id));
+    const score = (s) => (here.has(s.id) ? 0 : 2) + (mat && norm(s.material || "") === mat ? 0 : 1);
+    rolls = [...rolls].sort((x, y) => score(x) - score(y));
+  }
+  $("#jobForm").addRoll.innerHTML = (a ? "" : `<option value="">— keine —</option>`) + rolls.map(rollOption).join("");
+  $("#jobForm").addGrams.value = a ? a.grams : "";
   $("#jobError").textContent = "";
   $("#jobDialog").showModal();
 }
@@ -1356,30 +1425,46 @@ $("#jobForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target;
   const changes = [];
+  const jobInfo = { print_name: editJob.print_name, printer_id: editJob.printer_id, created_at: editJob.created_at, status: editJob.status };
   f.querySelectorAll("input[data-item]").forEach((inp) => {
-    const u = editJob.items[parseInt(inp.dataset.item, 10)];
+    const i = parseInt(inp.dataset.item, 10);
+    const u = editJob.items[i];
     const grams = parseFloat(String(inp.value).replace(",", "."));
+    const zero = (g) => (u.manual ? { manual_id: u.id, grams: g } : { usage_id: u.id, spool_id: u.spool_id, grams: g });
+    const moveTo = parseInt(f.querySelector(`select[data-move="${i}"]`)?.value, 10);
+    if (moveTo && grams > 0) {
+      // Umbuchen: bei der falschen Rolle auf 0 setzen (gibt das Filament zurück), bei der richtigen nachtragen.
+      const to = state.spools.find((x) => x.id === moveTo);
+      changes.push({ u, grams: 0, move: { to, grams }, body: zero(0) });
+      changes.push({ u: { spool: to, spool_id: moveTo, weight_used: 0 }, grams, hidden: true, body: { spool_id: moveTo, grams, job: jobInfo } });
+      return;
+    }
     if (!(grams >= 0) || Math.abs(grams - u.weight_used) < 0.05) return;
-    changes.push({ u, grams, body: u.manual ? { manual_id: u.id, grams } : { usage_id: u.id, spool_id: u.spool_id, grams } });
+    changes.push({ u, grams, body: zero(grams) });
   });
   const addId = parseInt(f.addRoll.value, 10);
   const addGrams = parseFloat(String(f.addGrams.value).replace(",", "."));
   if (addId && addGrams > 0) {
     const s = state.spools.find((x) => x.id === addId);
     changes.push({ u: { spool: s, spool_id: addId, weight_used: 0 }, grams: addGrams,
-      body: { spool_id: addId, grams: addGrams, job: { print_name: editJob.print_name, printer_id: editJob.printer_id, created_at: editJob.created_at, status: editJob.status } } });
+      body: { spool_id: addId, grams: addGrams, job: jobInfo } });
   }
   if (!changes.length) return $("#jobDialog").close();
-  const rows = changes.map(({ u, grams }) => {
+  const rows = changes.filter((c) => !c.hidden).map(({ u, grams, move }) => {
+    if (move) {
+      return `<div class="confirmLine">${dot(u.spool?.rgba)}<span>Umbuchen von <b>${esc(u.spool ? rollName(u.spool) : "Rolle " + u.spool_id)}</b>
+        <span class="muted">(+${Math.round(u.weight_used)} g zurück)</span> auf ${dot(move.to?.rgba, 16)} <b>${esc(move.to ? rollName(move.to) : "")}</b>
+        <span class="muted">(−${Math.round(move.grams)} g)</span></span></div>`;
+    }
     const diff = grams - u.weight_used;
     return `<div class="confirmLine">${dot(u.spool?.rgba)}<span><b>${esc(u.spool ? rollName(u.spool) : "Rolle " + u.spool_id)}</b> · ${Math.round(u.weight_used)} g → <b>${Math.round(grams)} g</b>
       <span class="muted">(${diff > 0 ? "Rolle −" + Math.round(diff) + " g" : "Rolle +" + Math.round(-diff) + " g zurück"})</span></span></div>`;
   }).join("");
-  const ok = await askConfirm("Abbuchung korrigieren", rows + `<p class="confirmNote">Die Differenz wird direkt bei der Rolle verbucht, damit der Lagerbestand stimmt. Die neue Summe des Drucks geht auch ins Bambuddy-Archiv, falls der Druck dort noch gespeichert ist.</p>`, "Speichern");
+  const ok = await askConfirm(editJob.archive ? "Abbuchung nachtragen" : "Abbuchung korrigieren", rows + `<p class="confirmNote">Die Differenz wird direkt bei der Rolle verbucht, damit der Lagerbestand stimmt. Die neue Summe des Drucks geht auch ins Bambuddy-Archiv, falls der Druck dort noch gespeichert ist.</p>`, "Speichern");
   if (!ok) return;
   // Neue Summe des Drucks fürs Bambuddy-Archiv: korrigierte und unveränderte Rollen plus nachgetragene.
   const final = new Map(editJob.items.map((u) => [u, u.weight_used]));
-  for (const c of changes) final.set(c.u, c.grams);
+  for (const c of changes) final.set(c.u, c.move ? 0 : c.grams);
   let total = 0, cost = 0;
   for (const [u, grams] of final) {
     total += grams;
@@ -1396,7 +1481,8 @@ $("#jobForm").addEventListener("submit", async (ev) => {
     } catch (e) {
       sync = { status: "failed", message: "Bambuddy-Archiv nicht aktualisiert" };
     }
-    toast(sync.status === "ok" ? "Abbuchung korrigiert, auch im Bambuddy-Archiv" : "Rolle korrigiert. " + sync.message, sync.status === "ok" ? 2600 : 6000);
+    if (editJob.archive) state.unbooked = (state.unbooked || []).filter((x) => x.id !== editJob.archive.id);
+    toast(sync.status === "ok" ? "Abbuchung gespeichert, auch im Bambuddy-Archiv" : "Rolle korrigiert. " + sync.message, sync.status === "ok" ? 2600 : 6000);
     await load(true);
   } catch (e) {
     $("#jobError").textContent = "Konnte nicht speichern: " + e.message;
@@ -1428,9 +1514,10 @@ function dot(rgba, size = 22) {
 
 function unassignedSlots() {
   // Belegt, ohne Chip und keiner Lager-Rolle zugeordnet: hier zieht Bambuddy keinen Verbrauch ab.
-  // Die externe Spule zählt nicht: Der Drucker meldet dort keinen Sensor, nur den zuletzt eingestellten Filamenttyp,
-  // auch wenn gar keine Rolle hängt. Zuordnen lässt sie sich weiterhin über „In Drucker einlegen“.
-  return allSlots().filter((x) => x.connected && x.present && !x.chip && x.ams_id !== 255 && !assignmentAt(x));
+  // Die externe Spule zählt nur bei Druckern ohne AMS (z. B. A1 Mini ohne AMS lite): Dort ist sie die einzige Quelle.
+  // Bei Druckern mit AMS meldet sie ohne Sensor nur den zuletzt eingestellten Filamenttyp, auch wenn keine Rolle hängt.
+  const hasAms = new Set(allSlots().filter((x) => x.ams_id !== 255).map((x) => x.printer_id));
+  return allSlots().filter((x) => x.connected && x.present && !x.chip && (x.ams_id !== 255 || !hasAms.has(x.printer_id)) && !assignmentAt(x));
 }
 
 function renderSlotBox() {
@@ -1650,6 +1737,11 @@ document.addEventListener("click", (ev) => {
   else if (act === "editJob") {
     const job = state.jobs?.get(btn.dataset.job);
     if (job) openJobEdit(job);
+  }
+  else if (act === "bookArchive" || act === "dismissArchive") {
+    const a = (state.unbooked || []).find((x) => String(x.id) === btn.dataset.arch);
+    if (a && act === "bookArchive") bookArchive(a);
+    else if (a) run(() => dismissArchive(a));
   }
   else if (act === "assignSlot") {
     const slot = slotByKey(btn.dataset.slot);

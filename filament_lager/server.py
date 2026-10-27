@@ -265,7 +265,8 @@ def current_user(headers):
             "group_source": source, "perms": perms}
 
 
-DESIGN_FONTS = ("system", "helvetica", "verdana", "trebuchet", "rounded", "condensed", "georgia", "mono")
+DESIGN_FONTS = ("system", "inter", "roboto", "open-sans", "source-sans-3", "atkinson", "lexend", "nunito", "comfortaa", "montserrat",
+                "oswald", "merriweather", "roboto-slab", "jetbrains-mono")
 
 
 def clean_design(d):
@@ -293,7 +294,7 @@ def clean_design(d):
 def required_perm(method, path, body=None):
     """Welches Recht eine Anfrage braucht: None = jeder, "any" = irgendein Recht, "admin" = nur Admin."""
     # Seite, Skripte und Icon darf jeder laden, damit „Kein Zugriff“ angezeigt werden kann.
-    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/groups", "/printers", "/printer-image/", "/usage-edits", "/places", "/place-image/", "/mdi", "/shop-meta"))):
+    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/groups", "/printers", "/printer-image/", "/usage-edits", "/unbooked", "/places", "/place-image/", "/mdi", "/shop-meta"))):
         return None
     if path.startswith(("/users", "/groups")):
         return "admin"
@@ -409,6 +410,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reconcile()
             if path == "/usage-edits":
                 return self.usage_edits()
+            if path == "/unbooked":
+                return self.unbooked()
             if path == "/archive-sync" and self.command == "POST":
                 return self.send(200, sync_archive(json.loads(self.read_body() or b"{}")))
             if path.startswith("/mdi/") and path.endswith(".svg"):
@@ -454,6 +457,8 @@ class Handler(BaseHTTPRequestHandler):
             ".css": "text/css; charset=utf-8",
             ".svg": "image/svg+xml",
             ".png": "image/png",
+            ".woff2": "font/woff2",
+            ".txt": "text/plain; charset=utf-8",
         }.get(os.path.splitext(full)[1], "application/octet-stream")
         with open(full, "rb") as f:
             self.send(200, f.read(), ctype)
@@ -522,6 +527,15 @@ class Handler(BaseHTTPRequestHandler):
         except (urllib.error.URLError, OSError):
             return self.send(502, {"detail": "Bambuddy nicht erreichbar"})
         return self.send(200, result)
+
+    def unbooked(self):
+        # Fehlt das Archiv oder das Recht dafür, gibt es einfach keine Liste statt eines Fehlers.
+        try:
+            return self.send(200, {"status": "ok", "prints": unbooked_prints()})
+        except urllib.error.HTTPError as e:
+            return self.send(200, {"status": "forbidden" if e.code in (401, 403) else "failed", "prints": []})
+        except (urllib.error.URLError, OSError, ValueError):
+            return self.send(200, {"status": "offline", "prints": []})
 
     def place_settings(self, pid):
         # Icon eines Lagerplatzes aus Bambuddy (Schlüssel ist dessen ID).
@@ -898,6 +912,7 @@ def load_usage_edits():
         data = {}
     data.setdefault("edits", {})
     data.setdefault("manual", [])
+    data.setdefault("dismissed", [])
     return data
 
 
@@ -924,6 +939,13 @@ def apply_usage_edit(req):
     und nur die Differenz bei der Rolle abgezogen oder gutgeschrieben.
     """
     data = load_usage_edits()
+    if req.get("dismiss") is not None:
+        # Druck aus Bambuddys Archiv, der bewusst nicht abgebucht wird (z. B. fremdes Filament).
+        aid = int(req["dismiss"])
+        if aid not in data["dismissed"]:
+            data["dismissed"] = (data["dismissed"] + [aid])[-500:]
+        save_usage_edits(data)
+        return data
     grams = float(req.get("grams"))
     if grams < 0 or grams > 5000:
         raise ValueError("Bitte eine Menge zwischen 0 und 5000 g eingeben")
@@ -999,6 +1021,36 @@ def find_archive(job):
         if best is None or score < best[0]:
             best = (score, a)
     return best[1] if best else None
+
+
+def unbooked_prints(days=30):
+    """Drucke aus Bambuddys Archiv, zu denen keine Abbuchung existiert (z. B. Rolle nicht zugeordnet)."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    archives = bambuddy("GET", f"archives/?date_from={since}&limit=200") or []
+    data = load_usage_edits()
+    booked = []
+    for u in (bambuddy("GET", "inventory/usage?limit=1000") or []) + data["manual"]:
+        t = parse_time(u.get("created_at"))
+        if t:
+            booked.append((u.get("printer_id"), (u.get("print_name") or "").strip().lower(), t))
+    dismissed = set(data["dismissed"])
+    out = []
+    for a in archives:
+        if a.get("id") in dismissed or a.get("status") not in ("completed", "failed", "stopped", "cancelled"):
+            continue
+        grams = a.get("filament_used_grams") or 0
+        done = parse_time(a.get("completed_at"))
+        if grams < 0.5 or not done:
+            continue
+        name = (a.get("print_name") or "").strip().lower()
+        if any((pid in (None, a.get("printer_id")) and abs((t - done).total_seconds()) <= 15 * 60)
+               or (name and n == name and abs((t - done).total_seconds()) <= 3 * 3600) for pid, n, t in booked):
+            continue
+        out.append({"id": a["id"], "print_name": a.get("print_name"), "printer_id": a.get("printer_id"),
+                    "completed_at": a.get("completed_at"), "grams": round(grams, 1), "status": a.get("status"),
+                    "filament_type": a.get("filament_type"), "filament_color": a.get("filament_color")})
+    out.sort(key=lambda a: a["completed_at"] or "", reverse=True)
+    return out
 
 
 def sync_archive(req):

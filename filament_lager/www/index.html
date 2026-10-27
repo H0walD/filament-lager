@@ -10,6 +10,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Filament-Lager</title>
+<link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="icon.png">
 </head>
@@ -69,6 +70,7 @@
     </div>
     <div id="usageSummary" class="summary"></div>
     <div id="usageBySort" class="usageBySort"></div>
+    <div id="unbookedBox" class="chipBox hidden"></div>
     <h3 class="usageHead">Druckaufträge</h3>
     <div id="usageList"></div>
   </section>
@@ -110,7 +112,7 @@
   </section>
 
   <section id="tab-design" class="hidden">
-    <p class="muted">Schriften für dich einstellen. Die Einstellung gilt für deinen Benutzer auf allen Geräten.</p>
+    <p class="muted">Schriften für dich einstellen. Die Einstellung gilt für deinen Benutzer auf allen Geräten. Die Schriften sind in der App enthalten und sehen überall gleich aus. Die Grössen sind Prozent der Grundschrift deines Geräts: Ist dort grössere Schrift eingestellt, wächst die App mit.</p>
     <div class="designGrid">
       <form id="designForm" class="designCard">
         <h3>Schriftarten</h3>
@@ -254,10 +256,10 @@
 
 <dialog id="jobDialog" class="wide">
   <form id="jobForm" method="dialog">
-    <h2>Abbuchung korrigieren</h2>
+    <h2 id="jobHeading">Abbuchung korrigieren</h2>
     <p id="jobTitle" class="muted"></p>
     <div id="jobRows" class="jobEditRows"></div>
-    <h3 class="usageHead">Rolle nachtragen, die nicht abgebucht wurde</h3>
+    <h3 id="jobAddHead" class="usageHead">Rolle nachtragen, die nicht abgebucht wurde</h3>
     <div class="row">
       <label>Rolle<select name="addRoll"></select></label>
       <label class="narrow">Gramm<input name="addGrams" type="number" min="0" max="5000" step="0.1"></label>

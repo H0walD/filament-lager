@@ -44,7 +44,7 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 - **Bestätigung**: jedes Ein- und Ausbuchen von Hand fragt vorher nach.
 - **Filter**: nach Hersteller, Material, Farbfamilie und Lagerort, jeweils mit Mehrfachauswahl.
 - **Löschen**: „−1“ bucht eine Rolle aus (in Bambuddy archiviert, wiederherstellbar). Endgültig löschen lässt sich eine einzelne Rolle in der Rollenübersicht und eine ganze Sorte unter „Sorte bearbeiten“, dort mit Wisch-Bestätigung.
-- **Design**: im Reiter Design Schriftarten für Titel und Text sowie die Grösse von Titeln, Text und Beschreibungen einzeln einstellen. Gilt pro Benutzer auf allen Geräten.
+- **Design**: im Reiter Design Schriftarten für Titel und Text (13 mitgelieferte Schriften, sehen auf jedem Gerät gleich aus) sowie die Grösse von Titeln, Text und Beschreibungen einzeln in Prozent einstellen. Gilt pro Benutzer auf allen Geräten.
 - **Hersteller verwalten**: Webseite und Logo pro Hersteller, neue Hersteller anlegen und nicht mehr gebrauchte löschen. Löschen geht nur, wenn keine Rolle mehr zugewiesen ist.
 - **Benutzergruppen und Rechte**: Gruppen mit einzelnen Rechten, z. B. welche Reiter sie sehen, Einkaufsliste, Rollen hinzufügen oder löschen, Hersteller bearbeiten. Admin hat immer alles. Bei der Einkaufsliste steht, wer einen Eintrag wann gemacht hat.
 - **Hell oder dunkel**: standardmäßig dunkel, oben rechts umschaltbar. Die Wahl gilt pro Benutzer auf allen Geräten.
@@ -162,3 +162,5 @@ Alle Daten bleiben bei dir: Rollen, Einkaufsliste und Lagerplätze liegen in Bam
 ## Lizenz
 
 [MIT](LICENSE). Die Material Design Icons (`mdi:`) stammen von [Pictogrammers](https://pictogrammers.com/library/mdi/) und stehen unter der Apache-Lizenz 2.0; sie werden beim Bauen der App geladen.
+
+Die mitgelieferten Schriften im Ordner `filament_lager/www/fonts` stehen unter der SIL Open Font License 1.1 (Roboto Slab unter Apache 2.0); die Lizenztexte liegen in `fonts/licenses`.
