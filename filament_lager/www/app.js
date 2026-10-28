@@ -1263,7 +1263,7 @@ function renderUsage() {
   const printerName = (id) => ((state.printers || []).length > 1 ? (state.printers.find((p) => p.id === id)?.name || "") : "");
   const jobs = usageJobs(list);
   $("#usageList").innerHTML = jobs.length ? jobs.map((j) => {
-    const status = j.status && j.status !== "completed" ? ` <span class="missing">(${j.status === "failed" ? "abgebrochen" : esc(j.status)})</span>` : "";
+    const status = j.status && j.status !== "completed" ? ` <span class="missing">(${statusText(j.status)})</span>` : "";
     const cost = j.items.reduce((n, u) => n + (u.cost || 0), 0);
     const grams = j.items.reduce((n, u) => n + (u.weight_used || 0), 0);
     return `<div class="jobCard">
@@ -1364,14 +1364,18 @@ function renderUnbooked() {
   box.innerHTML = `<h3>Drucke ohne Abbuchung</h3>
     <p class="muted">Diese Drucke stehen in Bambuddys Archiv, aber bei keiner Rolle wurde Filament abgezogen. Meist war im Drucker keine Rolle zugeordnet.</p>` +
     list.map((a) => {
-      const status = a.status && a.status !== "completed" ? ` <span class="missing">(${a.status === "failed" ? "abgebrochen" : esc(a.status)})</span>` : "";
+      const status = a.status && a.status !== "completed" ? ` <span class="missing">(${statusText(a.status)})</span>` : "";
       const rgba = /^#?[0-9a-f]{6}/i.test(a.filament_color || "") ? a.filament_color.replace("#", "").slice(0, 6) + "FF" : "";
       return `<div class="chipRow unclear">${dot(rgba)}<span class="grow"><b>${esc(a.print_name || "Druck")}</b>${status}
-        <span class="muted"> · ${fmtDateTime(a.completed_at)}${printerName(a.printer_id) ? " · " + esc(printerName(a.printer_id)) : ""} · ${Math.round(a.grams * 10) / 10} g${a.filament_type ? " " + esc(a.filament_type) : ""}</span></span>
+        <span class="muted"> · ${fmtDateTime(a.completed_at)}${printerName(a.printer_id) ? " · " + esc(printerName(a.printer_id)) : ""} · ${a.grams ? Math.round(a.grams * 10) / 10 + " g" : "Menge unbekannt"}${a.filament_type ? " " + esc(a.filament_type) : ""}</span></span>
         <span class="unbookedActs"><button class="primary need-usage_edit" data-act="bookArchive" data-arch="${a.id}">Rolle nachtragen</button>
         <button class="need-usage_edit" data-act="dismissArchive" data-arch="${a.id}" title="Nicht abbuchen, z. B. fremdes Filament">Ausblenden</button></span></div>`;
     }).join("");
   box.classList.remove("hidden");
+}
+
+function statusText(st) {
+  return ["failed", "aborted", "cancelled", "stopped"].includes(st) ? "abgebrochen" : esc(st);
 }
 
 function bookArchive(a) {
@@ -1387,6 +1391,7 @@ async function dismissArchive(a) {
 }
 
 $("#usagePeriod").addEventListener("change", renderUsage);
+$("#manualJob").addEventListener("click", () => openJobEdit({ items: [], manualNew: true, status: "completed" }));
 $("#usageSearch").addEventListener("input", renderUsage);
 
 // ---------- Abbuchung eines Drucks korrigieren ----------
@@ -1417,7 +1422,22 @@ function openJobEdit(job) {
   }
   $("#jobForm").addRoll.innerHTML = (a ? "" : `<option value="">— keine —</option>`) + rolls.map(rollOption).join("");
   rollPick($("#jobForm").addRoll);
-  $("#jobForm").addGrams.value = a ? a.grams : "";
+  $("#jobForm").addGrams.value = a?.grams || "";
+  // Druck ganz von Hand: Name, Drucker und Zeitpunkt selbst eintragen.
+  const m = $("#jobManual");
+  m.classList.toggle("hidden", !job.manualNew);
+  if (job.manualNew) {
+    $("#jobHeading").textContent = "Druck von Hand nachtragen";
+    $("#jobTitle").textContent = "Für Drucke, die weder abgebucht noch in Bambuddys Archiv zu finden sind.";
+    $("#jobAddHead").textContent = "Welche Rolle wurde verwendet?";
+    const f = $("#jobForm");
+    f.manName.value = "";
+    f.manPrinter.innerHTML = (state.printers || []).map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("") || `<option value="">–</option>`;
+    const now = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+    f.manWhen.value = now.toISOString().slice(0, 16);
+    f.addRoll.innerHTML = preferredRoll(state.spools).map(rollOption).join("");
+    rollPick(f.addRoll);
+  }
   $("#jobError").textContent = "";
   $("#jobDialog").showModal();
 }
@@ -1427,6 +1447,12 @@ $("#jobForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const f = ev.target;
   const changes = [];
+  if (editJob.manualNew) {
+    const when = new Date(f.manWhen.value);
+    if (!f.manName.value.trim()) return ($("#jobError").textContent = "Bitte einen Namen für den Druck eingeben");
+    if (isNaN(when)) return ($("#jobError").textContent = "Bitte Datum und Uhrzeit eingeben");
+    Object.assign(editJob, { print_name: f.manName.value.trim(), printer_id: parseInt(f.manPrinter.value, 10) || null, created_at: when.toISOString() });
+  }
   const jobInfo = { print_name: editJob.print_name, printer_id: editJob.printer_id, created_at: editJob.created_at, status: editJob.status };
   f.querySelectorAll("input[data-item]").forEach((inp) => {
     const i = parseInt(inp.dataset.item, 10);
@@ -1462,7 +1488,7 @@ $("#jobForm").addEventListener("submit", async (ev) => {
     return `<div class="confirmLine">${dot(u.spool?.rgba)}<span><b>${esc(u.spool ? rollName(u.spool) : "Rolle " + u.spool_id)}</b> · ${Math.round(u.weight_used)} g → <b>${Math.round(grams)} g</b>
       <span class="muted">(${diff > 0 ? "Rolle −" + Math.round(diff) + " g" : "Rolle +" + Math.round(-diff) + " g zurück"})</span></span></div>`;
   }).join("");
-  const ok = await askConfirm(editJob.archive ? "Abbuchung nachtragen" : "Abbuchung korrigieren", rows + `<p class="confirmNote">Die Differenz wird direkt bei der Rolle verbucht, damit der Lagerbestand stimmt. Die neue Summe des Drucks geht auch ins Bambuddy-Archiv, falls der Druck dort noch gespeichert ist.</p>`, "Speichern");
+  const ok = await askConfirm(editJob.manualNew ? "Druck nachtragen" : editJob.archive ? "Abbuchung nachtragen" : "Abbuchung korrigieren", rows + `<p class="confirmNote">Die Differenz wird direkt bei der Rolle verbucht, damit der Lagerbestand stimmt.${editJob.manualNew ? "" : " Die neue Summe des Drucks geht auch ins Bambuddy-Archiv, falls der Druck dort noch gespeichert ist."}</p>`, "Speichern");
   if (!ok) return;
   // Neue Summe des Drucks fürs Bambuddy-Archiv: korrigierte und unveränderte Rollen plus nachgetragene.
   const final = new Map(editJob.items.map((u) => [u, u.weight_used]));
@@ -1477,14 +1503,15 @@ $("#jobForm").addEventListener("submit", async (ev) => {
     for (const c of changes) await api("usage-edits", { method: "POST", body: JSON.stringify(c.body) });
     $("#jobDialog").close();
     // Das Archiv ist nur eine Ergänzung: Fehlt der Druck dort, gibt es einen Hinweis statt eines Fehlers.
-    let sync;
-    try {
+    // Von Hand nachgetragene Drucke gibt es im Archiv nicht; nichts anfassen, damit kein anderer Druck geändert wird.
+    let sync = editJob.manualNew ? { status: "ok", manual: true } : null;
+    if (!sync) try {
       sync = await api("archive-sync", { method: "POST", body: JSON.stringify({ job, grams: total, cost: cost > 0 ? cost : null }) });
     } catch (e) {
       sync = { status: "failed", message: "Bambuddy-Archiv nicht aktualisiert" };
     }
     if (editJob.archive) state.unbooked = (state.unbooked || []).filter((x) => x.id !== editJob.archive.id);
-    toast(sync.status === "ok" ? "Abbuchung gespeichert, auch im Bambuddy-Archiv" : "Rolle korrigiert. " + sync.message, sync.status === "ok" ? 2600 : 6000);
+    toast(sync.manual ? "Druck nachgetragen" : sync.status === "ok" ? "Abbuchung gespeichert, auch im Bambuddy-Archiv" : "Rolle korrigiert. " + sync.message, sync.status === "ok" ? 2600 : 6000);
     await load(true);
   } catch (e) {
     $("#jobError").textContent = "Konnte nicht speichern: " + e.message;
@@ -1654,7 +1681,7 @@ function rollCard(s) {
       : `<button type="button" class="need-printer" data-act="loadRoll" data-roll="${s.id}">In Drucker einlegen</button>`}
       <button type="button" class="need-rolls_remove dangerOutline" data-act="deleteRoll" data-roll="${s.id}">${ic("trash")} Rolle löschen</button></div>
     <div class="usage">${usage.length ? `<div class="muted">Letzte Drucke</div>` + usage.map((u) => `<div class="usageRow"><span>${fmtDate(u.created_at)}</span>
-      <span class="grow">${esc(u.print_name || "Druck")}${u.status && u.status !== "completed" ? ` <span class="missing">(${u.status === "failed" ? "abgebrochen" : esc(u.status)})</span>` : ""}</span>
+      <span class="grow">${esc(u.print_name || "Druck")}${u.status && u.status !== "completed" ? ` <span class="missing">(${statusText(u.status)})</span>` : ""}</span>
       <b>${Math.round(u.weight_used)} g</b>${u.cost ? `<span class="muted">${money(u.cost)}</span>` : ""}</div>`).join("")
       : `<div class="muted">Noch kein Verbrauch erfasst.</div>`}</div>
   </div>`;

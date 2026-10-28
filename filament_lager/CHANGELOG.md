@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.7.2
+
+- „Drucke ohne Abbuchung“ zeigt jetzt auch Drucke mit Status „aborted“ und Drucke, für die Bambuddy keine Grammzahl kennt (z. B. Datei vom internen Speicher); die Menge trägst du dann selbst ein
+- Neu „+ Druck von Hand nachtragen“ im Reiter Verbrauch: Name, Drucker, Zeitpunkt, Rolle und Gramm selbst eingeben, für Drucke, die weder abgebucht noch im Archiv sind
+
 ## 1.7.1
 
 - Rollenauswahl mit Farbpunkt beim Nachtragen, Umbuchen und Einlegen, auch in der aufgeklappten Liste

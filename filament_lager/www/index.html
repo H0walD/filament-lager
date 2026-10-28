@@ -71,7 +71,8 @@
     <div id="usageSummary" class="summary"></div>
     <div id="usageBySort" class="usageBySort"></div>
     <div id="unbookedBox" class="chipBox hidden"></div>
-    <h3 class="usageHead">Druckaufträge</h3>
+    <div class="usageListHead"><h3 class="usageHead">Druckaufträge</h3>
+      <button type="button" id="manualJob" class="need-usage_edit">+ Druck von Hand nachtragen</button></div>
     <div id="usageList"></div>
   </section>
 
@@ -258,6 +259,13 @@
   <form id="jobForm" method="dialog">
     <h2 id="jobHeading">Abbuchung korrigieren</h2>
     <p id="jobTitle" class="muted"></p>
+    <div id="jobManual" class="hidden">
+      <label>Druck<input name="manName" placeholder="z. B. Name der Datei"></label>
+      <div class="row">
+        <label>Drucker<select name="manPrinter"></select></label>
+        <label>Fertig am<input name="manWhen" type="datetime-local"></label>
+      </div>
+    </div>
     <div id="jobRows" class="jobEditRows"></div>
     <h3 id="jobAddHead" class="usageHead">Rolle nachtragen, die nicht abgebucht wurde</h3>
     <div class="row">

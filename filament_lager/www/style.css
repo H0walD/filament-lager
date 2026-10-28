@@ -412,3 +412,5 @@ select.pickHidden { display: none; }
 .moveWrap { box-sizing: border-box; min-width: 0; }
 #unbookedBox .chipRow .grow { flex: 1 1 220px; }
 @media (max-width: 520px) { #unbookedBox .unbookedActs { flex-basis: 100%; padding-left: 30px; } }
+.usageListHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.usageListHead button { font-size: calc(0.8125rem * var(--fs-text)); padding: 5px 10px; }

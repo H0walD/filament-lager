@@ -1036,18 +1036,21 @@ def unbooked_prints(days=30):
     dismissed = set(data["dismissed"])
     out = []
     for a in archives:
-        if a.get("id") in dismissed or a.get("status") not in ("completed", "failed", "stopped", "cancelled"):
+        # Bambuddy kennt completed, failed, aborted, cancelled und printing; nur laufende auslassen.
+        if a.get("id") in dismissed or a.get("status") in ("printing", "running", "paused", "pending", "queued"):
             continue
-        grams = a.get("filament_used_grams") or 0
-        done = parse_time(a.get("completed_at"))
-        if grams < 0.5 or not done:
+        grams = a.get("filament_used_grams")
+        when = a.get("completed_at") or a.get("started_at") or a.get("created_at")
+        done = parse_time(when)
+        # Ohne Grammangabe (z. B. Druck vom internen Speicher ohne 3MF) trotzdem zeigen, die Menge trägt man selbst ein.
+        if not done or (grams is not None and grams < 0.5 and a.get("status") != "completed"):
             continue
         name = (a.get("print_name") or "").strip().lower()
         if any((pid in (None, a.get("printer_id")) and abs((t - done).total_seconds()) <= 15 * 60)
                or (name and n == name and abs((t - done).total_seconds()) <= 3 * 3600) for pid, n, t in booked):
             continue
         out.append({"id": a["id"], "print_name": a.get("print_name"), "printer_id": a.get("printer_id"),
-                    "completed_at": a.get("completed_at"), "grams": round(grams, 1), "status": a.get("status"),
+                    "completed_at": when, "grams": round(grams, 1) if grams else None, "status": a.get("status"),
                     "filament_type": a.get("filament_type"), "filament_color": a.get("filament_color")})
     out.sort(key=lambda a: a["completed_at"] or "", reverse=True)
     return out

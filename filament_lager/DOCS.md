@@ -33,7 +33,7 @@ Damit Bambuddy den Verbrauch abzieht, muss die Rolle einem AMS-Platz zugeordnet 
 
 Im Reiter Verbrauch lässt sich bei jedem Druck die abgebuchte Menge ändern. Die Differenz wird bei der Rolle verbucht, und die neue Summe des Drucks geht auch ins Bambuddy-Archiv. Dafür braucht der API-Schlüssel das Recht „Archive verwalten“ (in Bambuddy standardmäßig an). Ist der Druck im Archiv schon gelöscht, wird nur die Rolle korrigiert und die App zeigt einen Hinweis.
 
-War beim Druck die falsche Rolle zugeordnet, wählst du beim Korrigieren unter der Rolle „Umbuchen auf“ die richtige: Die falsche bekommt die Menge zurück, die richtige wird belastet. Drucke, bei denen gar nichts abgebucht wurde, zeigt die App oben im Reiter Verbrauch unter „Drucke ohne Abbuchung“ (aus Bambuddys Archiv, letzte 30 Tage). Mit „Rolle nachtragen“ buchst du sie mit der Menge aus dem Archiv ab, mit „Ausblenden“ verschwinden sie aus der Liste.
+War beim Druck die falsche Rolle zugeordnet, wählst du beim Korrigieren unter der Rolle „Umbuchen auf“ die richtige: Die falsche bekommt die Menge zurück, die richtige wird belastet. Drucke, bei denen gar nichts abgebucht wurde, zeigt die App oben im Reiter Verbrauch unter „Drucke ohne Abbuchung“ (aus Bambuddys Archiv, letzte 30 Tage). Mit „Rolle nachtragen“ buchst du sie mit der Menge aus dem Archiv ab, mit „Ausblenden“ verschwinden sie aus der Liste. Fehlt ein Druck auch dort, trägst du ihn mit „+ Druck von Hand nachtragen“ ein.
 
 Bambuddys Statistikseite übernimmt den Archivwert nur, wenn beim Druck nichts gemessen wurde. Hat Bambuddy selbst einen Verbrauch gemessen, behält die Statistik diesen.
 
