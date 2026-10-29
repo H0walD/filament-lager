@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.8.0
+
+- Neuer Filter „Restmenge“ im Lager: „Knapp oder leer“, „Leer“, bis 250 g, 500 g, 1 kg, 2 kg oder ein eigener Wert in Gramm. Gezählt wird, was von der Sorte insgesamt noch übrig ist (Lager und Drucker). Lässt sich mit den anderen Filtern kombinieren, so siehst du z. B. alle PLA-Sorten unter 500 g auf einen Blick und setzt sie auf die Einkaufsliste
+
 ## 1.7.2
 
 - „Drucke ohne Abbuchung“ zeigt jetzt auch Drucke mit Status „aborted“ und Drucke, für die Bambuddy keine Grammzahl kennt (z. B. Datei vom internen Speicher); die Menge trägst du dann selbst ein

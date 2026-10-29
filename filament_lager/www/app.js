@@ -8,7 +8,7 @@ const state = {
   spools: [],
   shop: [],
   groups: [],
-  filter: { text: "", brand: [], material: [], color: [], place: [] },
+  filter: { text: "", brand: [], material: [], color: [], place: [], weight: "" },
   logoVersion: Date.now(),
   loaded: false,
 };
@@ -462,9 +462,27 @@ function placeMatches(g, p) {
   return g.places.includes(p);
 }
 
+// Filter Restmenge: Gramm, die von der Sorte insgesamt noch übrig sind (Lager und Drucker zusammen).
+// "low" = knapp oder leer wie auf den Kacheln, "empty" = leer, sonst eine Zahl = höchstens so viele Gramm.
+const WEIGHT_PRESETS = [["low", "Knapp oder leer"], ["empty", "Leer"], ["250", "bis 250 g"], ["500", "bis 500 g"], ["1000", "bis 1 kg"], ["2000", "bis 2 kg"]];
+
+function weightMatches(g, w) {
+  if (!w) return true;
+  if (w === "low") return g.low || g.empty;
+  if (w === "empty") return g.empty;
+  const max = Number(w);
+  return !(max >= 0) || g.remaining <= max;
+}
+
+function weightText(w) {
+  if (!w) return "Alle Mengen";
+  return WEIGHT_PRESETS.find(([v]) => v === w)?.[1] || `bis ${kg(Number(w))}`;
+}
+
 function matchesFilter(g) {
   // Innerhalb eines Filters reicht ein Treffer (oder), zwischen den Filtern muss alles passen (und).
   const f = state.filter;
+  if (!weightMatches(g, f.weight)) return false;
   if (f.brand.length && !f.brand.some((v) => norm(v) === norm(g.brand))) return false;
   if (f.material.length && !f.material.some((v) => norm(v) === norm(g.material))) return false;
   if (f.color.length && !f.color.includes(colorFamily(g.rgba))) return false;
@@ -570,7 +588,29 @@ function renderChips() {
         ${chosen.length ? `<button type="button" class="msClear" data-msclear="${key}">Auswahl löschen</button>` : ""}
       </div>`;
   }
-  $("#fReset").classList.toggle("hidden", !FILTER_KEYS.some((k) => state.filter[k].length));
+  renderWeightFilter();
+  $("#fReset").classList.toggle("hidden", !filterActive());
+}
+
+const filterActive = () => FILTER_KEYS.some((k) => state.filter[k].length) || !!state.filter.weight;
+
+function renderWeightFilter() {
+  const box = $("#fWeight");
+  const w = state.filter.weight;
+  box.classList.toggle("active", !!w);
+  // Beim Tippen im eigenen Wert nicht neu zeichnen, sonst springt der Cursor raus (Auffrischen alle 15 s).
+  if (box.contains(document.activeElement) && document.activeElement.dataset.wcustom != null) {
+    box.querySelector(".msBtn").textContent = weightText(w);
+    return;
+  }
+  const custom = w && !WEIGHT_PRESETS.some(([v]) => v === w) ? w : "";
+  const radio = (v, label) => `<label><input type="radio" name="fWeight" data-weight value="${v}"${w === v ? " checked" : ""}>${esc(label)}</label>`;
+  box.innerHTML = `<button type="button" class="msBtn" data-ms="weight">${esc(weightText(w))}</button>
+    <div class="msMenu${openMenu === "weight" ? "" : " hidden"}">
+      ${radio("", "Alle Mengen")}
+      ${WEIGHT_PRESETS.map(([v, label]) => radio(v, label)).join("")}
+      <label class="wCustom">bis <input type="number" min="0" step="50" inputmode="numeric" data-wcustom placeholder="z. B. 750" value="${esc(custom)}"> g</label>
+    </div>`;
 }
 
 $(".filters").addEventListener("click", (ev) => {
@@ -589,12 +629,30 @@ $(".filters").addEventListener("click", (ev) => {
 });
 
 $(".filters").addEventListener("change", (ev) => {
+  if (ev.target.matches("input[data-weight]")) {
+    state.filter.weight = ev.target.value;
+    saveFilter();
+    renderChips();
+    renderStock();
+    return;
+  }
   const cb = ev.target.closest("input[data-msval]");
   if (!cb) return;
   const key = cb.dataset.msval;
   const set = new Set(state.filter[key]);
   cb.checked ? set.add(cb.value) : set.delete(cb.value);
   state.filter[key] = [...set];
+  saveFilter();
+  renderChips();
+  renderStock();
+});
+
+// Eigener Wert im Filter Restmenge: schon beim Tippen filtern, leer = alle Mengen.
+$(".filters").addEventListener("input", (ev) => {
+  if (!ev.target.matches("input[data-wcustom]")) return;
+  const v = ev.target.value.trim();
+  state.filter.weight = v !== "" && Number(v) >= 0 ? String(Math.round(Number(v))) : "";
+  for (const r of document.querySelectorAll("input[data-weight]")) r.checked = r.value === state.filter.weight;
   saveFilter();
   renderChips();
   renderStock();
@@ -611,6 +669,7 @@ document.addEventListener("click", (ev) => {
 
 $("#fReset").addEventListener("click", () => {
   for (const k of FILTER_KEYS) state.filter[k] = [];
+  state.filter.weight = "";
   openMenu = null;
   saveFilter();
   renderChips();
@@ -2030,6 +2089,7 @@ $("#defaultGroup").addEventListener("change", async (ev) => {
     const saved = JSON.parse(localStorage.getItem("filter") || "{}");
     // Früher war je Filter nur ein Wert gespeichert, jetzt eine Liste.
     for (const k of FILTER_KEYS) state.filter[k] = Array.isArray(saved[k]) ? saved[k] : saved[k] ? [saved[k]] : [];
+    state.filter.weight = typeof saved.weight === "string" ? saved.weight : "";
     const tab = localStorage.getItem("tab");
     const btn = tab && document.querySelector(`.tab[data-tab="${tab}"]`);
     if (btn && getComputedStyle(btn).display !== "none") btn.click();

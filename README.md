@@ -42,7 +42,7 @@ Bambuddy zählt den Filamentverbrauch deiner Bambu-Lab-Drucker automatisch mit, 
 - **RFID-Abgleich**: Steckst du eine Bambu-Rolle mit Chip ins AMS, die du vorher schon im Lager erfasst hast, ordnet die App den Chip dieser Lager-Rolle zu. Nichts wird doppelt gezählt.
 - **Bearbeiten und Ausbuchen**: fehlende Angaben nachtragen, Farben korrigieren, eine zu viel erfasste Rolle wieder ausbuchen (wird in Bambuddy archiviert, nicht gelöscht).
 - **Bestätigung**: jedes Ein- und Ausbuchen von Hand fragt vorher nach.
-- **Filter**: nach Hersteller, Material, Farbfamilie und Lagerort, jeweils mit Mehrfachauswahl.
+- **Filter**: nach Hersteller, Material, Farbfamilie und Lagerort, jeweils mit Mehrfachauswahl, dazu nach Restmenge (knapp oder leer, bis 250 g, 500 g, 1 kg, 2 kg oder eigener Wert). Praktisch, um alles, was bald ausgeht, auf einmal auf die Einkaufsliste zu setzen.
 - **Löschen**: „−1“ bucht eine Rolle aus (in Bambuddy archiviert, wiederherstellbar). Endgültig löschen lässt sich eine einzelne Rolle in der Rollenübersicht und eine ganze Sorte unter „Sorte bearbeiten“, dort mit Wisch-Bestätigung.
 - **Design**: im Reiter Design Schriftarten für Titel und Text (13 mitgelieferte Schriften, sehen auf jedem Gerät gleich aus) sowie die Grösse von Titeln, Text und Beschreibungen einzeln in Prozent einstellen. Gilt pro Benutzer auf allen Geräten.
 - **Hersteller verwalten**: Webseite und Logo pro Hersteller, neue Hersteller anlegen und nicht mehr gebrauchte löschen. Löschen geht nur, wenn keine Rolle mehr zugewiesen ist.
