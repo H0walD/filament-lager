@@ -307,7 +307,12 @@ def required_perm(method, path, body=None):
     if path.startswith(("/usage-edits", "/archive-sync")):
         return "usage_edit"
     if path.startswith("/reconcile"):
-        return "printer"
+        # Hinweise „Chip erkannt“ ausblenden darf jeder, der das Lager sieht.
+        try:
+            dismiss = "dismiss" in (json.loads(body or b"{}") or {})
+        except (ValueError, AttributeError):
+            dismiss = False
+        return "any" if dismiss else "printer"
     if path.startswith("/api/inventory/"):
         rel = path[len("/api/inventory/"):]
         if rel.startswith("shopping-list"):
@@ -714,7 +719,18 @@ class Handler(BaseHTTPRequestHandler):
         # Unklare Chip-Rolle von Hand zuordnen oder als echte neue Rolle behalten.
         req = json.loads(self.read_body() or b"{}")
         with RECONCILE_LOCK:
+            if "dismiss" in req:
+                return self.dismiss(req["dismiss"])
             self.resolve(req)
+
+    def dismiss(self, which):
+        # Erledigte Hinweise nur markieren, nicht löschen: der Abgleich merkt sich darüber, welche Chips schon zugeordnet sind.
+        data = load_merges()
+        for m in data.get("merged", []):
+            if which == "all" or m.get("chip_id") == which:
+                m["dismissed"] = True
+        save_merges(data)
+        self.send(200, {"ok": True})
 
     def resolve(self, req):
         data = load_merges()

@@ -181,6 +181,9 @@ input[type=color] { height: 38px; padding: 2px; }
 .dupRow span.grow { flex: 1; }
 .chipBox { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
 .chipBox h3 { margin: 0; font-size: calc(0.875rem * var(--fs-title)); }
+.chipHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chipHead button { padding: 4px 10px; font-size: calc(0.8125rem * var(--fs-text)); }
+.chipRow .chipClose { margin-left: auto; padding: 4px 6px; }
 .chipRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: calc(0.875rem * var(--fs-text)); }
 .chipRow .swatch { width: 22px; height: 22px; }
 .chipRow select { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px; }

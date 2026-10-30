@@ -496,15 +496,16 @@ function renderChipBox() {
   // Chip-Rollen vom Drucker: automatisch zusammengeführte (letzte 24 h) und unklare zum Zuordnen.
   const rec = state.reconcile || {};
   const dot = (rgba) => `<span class="swatch" style="background:${swatchBg(rgba)}"></span>`;
-  const recent = (rec.merged || []).filter((m) => Date.now() / 1000 - m.time < 86400).reverse();
+  const recent = (rec.merged || []).filter((m) => !m.dismissed && Date.now() / 1000 - m.time < 86400).reverse();
   const unclear = rec.unclear || [];
   if (!recent.length && !unclear.length) return $("#chipBox").classList.add("hidden");
-  $("#chipBox").innerHTML = `<h3>Vom Drucker erkannt</h3>` +
+  $("#chipBox").innerHTML = `<div class="chipHead"><h3>Vom Drucker erkannt</h3>${recent.length > 1 ? `<button data-act="dismissChip" data-chip="all">Alle ausblenden</button>` : ""}</div>` +
     unclear.map((u) => `<div class="chipRow unclear">${dot(u.rgba)}<span>Chip-Rolle <b>${esc(u.chip)}</b> passt zu mehreren Sorten:</span>
       <select data-chip="${u.chip_id}">${u.options.map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join("")}</select>
       <button class="primary need-printer" data-act="resolve" data-chip="${u.chip_id}">Zuordnen</button>
       <button class="need-printer" data-act="keep" data-chip="${u.chip_id}">Ist eine neue Rolle</button></div>`).join("") +
-    recent.map((m) => `<div class="chipRow">${dot(m.rgba)}<span>Chip erkannt und deiner Lager-Rolle <b>${esc(m.name)}</b> zugeordnet, nichts doppelt.</span></div>`).join("");
+    recent.map((m) => `<div class="chipRow">${dot(m.rgba)}<span>Chip erkannt und deiner Lager-Rolle <b>${esc(m.name)}</b> zugeordnet, nichts doppelt.</span>
+      <button class="icon chipClose" data-act="dismissChip" data-chip="${m.chip_id}" title="Ausblenden">${ic("close")}</button></div>`).join("");
   $("#chipBox").classList.remove("hidden");
 }
 
@@ -1033,6 +1034,13 @@ document.addEventListener("click", (ev) => {
   else if (act === "resolve") {
     const stockId = parseInt(document.querySelector(`select[data-chip="${btn.dataset.chip}"]`).value, 10);
     run(() => api("reconcile", { method: "POST", body: JSON.stringify({ chip_id: parseInt(btn.dataset.chip, 10), stock_id: stockId }) }));
+  }
+  else if (act === "dismissChip") {
+    const which = btn.dataset.chip === "all" ? "all" : parseInt(btn.dataset.chip, 10);
+    // Sofort ausblenden, nicht erst nach dem nächsten Abruf.
+    for (const m of state.reconcile?.merged || []) if (which === "all" || m.chip_id === which) m.dismissed = true;
+    renderChipBox();
+    run(() => api("reconcile", { method: "POST", body: JSON.stringify({ dismiss: which }) }));
   }
   else if (act === "keep") run(() => api("reconcile", { method: "POST", body: JSON.stringify({ chip_id: parseInt(btn.dataset.chip, 10), keep: true }) }));
   else if (item && act === "ordered") run(() => api(`api/inventory/shopping-list/${item.id}/status`, { method: "PATCH", body: JSON.stringify({ status: "purchased" }) }));
