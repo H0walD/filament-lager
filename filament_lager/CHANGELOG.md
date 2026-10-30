@@ -1,9 +1,12 @@
 # Änderungen
 
+## 1.8.1
+
+- Hinweise „Chip erkannt und deiner Lager-Rolle zugeordnet“ lassen sich mit ✕ einzeln oder mit „Alle ausblenden“ wegklicken; ausgeblendet ist für alle Benutzer und Geräte
+
 ## 1.8.0
 
 - Neuer Filter „Restmenge“ im Lager: „Knapp oder leer“, „Leer“, bis 250 g, 500 g, 1 kg, 2 kg oder ein eigener Wert in Gramm. Gezählt wird, was von der Sorte insgesamt noch übrig ist (Lager und Drucker). Lässt sich mit den anderen Filtern kombinieren, so siehst du z. B. alle PLA-Sorten unter 500 g auf einen Blick und setzt sie auf die Einkaufsliste
-- Hinweise „Chip erkannt und deiner Lager-Rolle zugeordnet“ lassen sich mit ✕ einzeln oder mit „Alle ausblenden“ wegklicken; ausgeblendet ist für alle Benutzer und Geräte
 
 ## 1.7.2
 
