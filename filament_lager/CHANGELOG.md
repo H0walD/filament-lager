@@ -1,5 +1,9 @@
 # Änderungen
 
+## 1.9.1
+
+- Archiv: Rollen lassen sich mit dem Papierkorb endgültig löschen (mit Bestätigung, braucht das Recht „Rollen ausbuchen/löschen“)
+
 ## 1.9.0
 
 - Leere Rollen (0 g übrig) kommen automatisch ins Archiv, sobald sie keinem Drucker-Platz mehr zugeordnet sind, und zählen nicht mehr im Lager mit. Abschaltbar in der Konfiguration unter „Leere Rollen archivieren“

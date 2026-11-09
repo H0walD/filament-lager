@@ -1060,7 +1060,8 @@ function renderArchive() {
       const left = remaining(s);
       return `<div class="archiveRoll"><span class="grow">Rolle ${s.id} · ausgebucht ${fmtDate(s.archived_at)}${auto ? " · automatisch, weil leer" : ""}
         <span class="muted">· ${left > 0 ? kg(left) + " übrig" : "leer"}${s.label_weight ? " von " + kg(s.label_weight) : ""}</span></span>
-        <button class="need-rolls_remove" data-act="restoreRoll" data-roll="${s.id}" title="Zurück ins Lager">Wiederherstellen</button></div>`;
+        <button class="need-rolls_remove" data-act="restoreRoll" data-roll="${s.id}" title="Zurück ins Lager">Wiederherstellen</button>
+        <button class="need-rolls_remove dangerOutline" data-act="purgeRoll" data-roll="${s.id}" title="Endgültig löschen">${ic("trash")}</button></div>`;
     }).join("");
     return `<details class="archiveItem" data-key="${esc(g.key)}"${open.has(g.key) ? " open" : ""}>
       <summary>
@@ -1089,8 +1090,19 @@ document.addEventListener("click", (ev) => {
   } else if (btn.dataset.act === "restoreRoll") {
     const s = state.allSpools?.get(Number(btn.dataset.roll));
     if (s) run(() => restoreRoll(s));
+  } else if (btn.dataset.act === "purgeRoll") {
+    const s = state.allSpools?.get(Number(btn.dataset.roll));
+    if (s) run(() => purgeRoll(s));
   }
 });
+
+async function purgeRoll(s) {
+  const ok = await askConfirm("Endgültig löschen", `<div class="confirmLine">${dot(s.rgba, 32)}<span><b>${esc(rollName(s))}</b> · Rolle ${s.id} · ausgebucht ${fmtDate(s.archived_at)}</span></div>
+    <p class="confirmNote">Die Rolle wird in Bambuddy endgültig gelöscht und lässt sich nicht wiederherstellen. Ihre Drucke bleiben im Verbrauch, erscheinen dort aber als „Unbekannte Rolle“.</p>`, "Löschen", true);
+  if (!ok) return;
+  await api(`api/inventory/spools/${s.id}`, { method: "DELETE" });
+  toast(`Rolle ${s.id} gelöscht`);
+}
 
 async function restoreRoll(s) {
   const ok = await askConfirm("Wiederherstellen", sortLine(s, 1) +
