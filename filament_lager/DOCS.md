@@ -21,6 +21,10 @@ Im Reiter **Benutzer** (nur Admin) ordnest du jedem Benutzer eine Gruppe zu und 
 - Rollen hinzufügen und entfernen darf anfangs nur Admin; du kannst es jeder Gruppe geben.
 - Änderungen gelten sofort. Die App prüft die Rechte auch auf dem Server.
 
+## Leere Rollen und Archiv
+
+Eine Rolle mit 0 g Rest kommt automatisch ins Archiv, sobald sie keinem Drucker-Platz mehr zugeordnet ist. Danach zählt sie nicht mehr im Lager. Im Reiter **Archiv** findest du alle ausgebuchten Rollen, kannst nach Hersteller und Material filtern, eine volle Rolle derselben Sorte auf die Einkaufsliste setzen oder eine Rolle wiederherstellen. Abschalten lässt sich das automatische Archivieren in der Konfiguration unter **Leere Rollen archivieren**.
+
 ## RFID-Rollen
 
 Neue Rollen zuerst in Filament-Lager erfassen, dann ins AMS stecken. Die App ordnet den Chip innerhalb einer Minute der Lager-Rolle zu, damit nichts doppelt gezählt wird. In Bambuddy muss „Unbekannte RFID-Spulen automatisch hinzufügen“ eingeschaltet sein.

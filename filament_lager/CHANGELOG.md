@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.9.0
+
+- Leere Rollen (0 g übrig) kommen automatisch ins Archiv, sobald sie keinem Drucker-Platz mehr zugeordnet sind, und zählen nicht mehr im Lager mit. Abschaltbar in der Konfiguration unter „Leere Rollen archivieren“
+- Neuer Reiter „Archiv“: alle ausgebuchten Rollen, je Sorte zusammengefasst, mit Filter nach Hersteller und Material und Suche. Pro Rolle siehst du, wann und ob automatisch ausgebucht wurde, und kannst sie wiederherstellen
+- Warenkorb im Archiv setzt eine volle Rolle derselben Sorte auf die Einkaufsliste. Gibt es die Sorte im Lager nicht mehr, wird beim Eintreffen die archivierte Rolle als Vorlage genommen (Farbe, Gewicht, Preis), aber als volle Rolle eingebucht
+
 ## 1.8.1
 
 - Hinweise „Chip erkannt und deiner Lager-Rolle zugeordnet“ lassen sich mit ✕ einzeln oder mit „Alle ausblenden“ wegklicken; ausgeblendet ist für alle Benutzer und Geräte

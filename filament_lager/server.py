@@ -294,7 +294,7 @@ def clean_design(d):
 def required_perm(method, path, body=None):
     """Welches Recht eine Anfrage braucht: None = jeder, "any" = irgendein Recht, "admin" = nur Admin."""
     # Seite, Skripte und Icon darf jeder laden, damit „Kein Zugriff“ angezeigt werden kann.
-    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/groups", "/printers", "/printer-image/", "/usage-edits", "/unbooked", "/places", "/place-image/", "/mdi", "/shop-meta"))):
+    if path == "/api/me" or (method == "GET" and not path.startswith(("/api/", "/reconcile", "/brands", "/logo/", "/users", "/groups", "/printers", "/printer-image/", "/usage-edits", "/unbooked", "/places", "/place-image/", "/mdi", "/shop-meta", "/auto-archived"))):
         return None
     if path.startswith(("/users", "/groups")):
         return "admin"
@@ -321,6 +321,8 @@ def required_perm(method, path, body=None):
             return "printer"
         if method == "POST" and rel in ("spools", "spools/bulk"):
             return "rolls_add"
+        if method == "POST" and re.fullmatch(r"spools/\d+/restore", rel):
+            return "rolls_remove"
         if (method == "POST" and rel.endswith("/archive")) or (method == "DELETE" and re.fullmatch(r"spools/\d+", rel)):
             return "rolls_remove"
         if method == "POST" and rel == "spools/bulk-update":
@@ -407,6 +409,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.groups(path[len("/groups/"):] if path.startswith("/groups/") else None)
             if path == "/shop-meta":
                 return self.send(200, load_shop_meta())
+            if path == "/auto-archived":
+                return self.send(200, load_auto_archived())
             if path.startswith("/api/inventory/"):
                 return self.proxy(path[len("/api/"):] + query)
             if path == "/api/status":
@@ -1243,6 +1247,52 @@ def reconcile_once():
     save_merges(data)
 
 
+AUTO_ARCHIVED_FILE = os.path.join(DATA_DIR, "auto_archived.json")
+
+
+def load_auto_archived():
+    try:
+        with open(AUTO_ARCHIVED_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_auto_archived(data):
+    tmp = AUTO_ARCHIVED_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.replace(tmp, AUTO_ARCHIVED_FILE)
+
+
+def archive_empty_once():
+    """Leere Rollen (0 g übrig), die keinem Drucker-Platz zugeordnet sind, ins Archiv von Bambuddy legen."""
+    opts = load_options()
+    if not opts.get("api_key") or not opts.get("leere_rollen_archivieren", True):
+        return
+    # Ohne sichere Druckerzuordnung nichts tun, sonst würde eine leere Rolle mitten im Druck archiviert.
+    try:
+        assignments = bambuddy("GET", "inventory/assignments")
+    except (urllib.error.URLError, OSError):
+        return
+    if not isinstance(assignments, list):
+        return
+    in_printer = {a.get("spool_id") for a in assignments}
+    log = load_auto_archived()
+    for s in bambuddy("GET", "inventory/spools") or []:
+        label = s.get("label_weight") or 0
+        if s.get("archived_at") or s["id"] in in_printer or label <= 0 or (s.get("weight_used") or 0) < label:
+            continue
+        try:
+            bambuddy("POST", f"inventory/spools/{s['id']}/archive")
+        except (urllib.error.URLError, OSError) as e:
+            print(f"Leere Rolle {s['id']} konnte nicht archiviert werden: {e}")
+            continue
+        log[str(s["id"])] = time.time()
+        print(f"Leere Rolle {s['id']} archiviert ({describe(s)})")
+    save_auto_archived(log)
+
+
 def reconcile_loop():
     while True:
         try:
@@ -1250,6 +1300,10 @@ def reconcile_loop():
                 reconcile_once()
         except Exception as e:  # der Abgleich darf den Server nie stoppen
             print(f"Abgleich-Fehler: {e}")
+        try:
+            archive_empty_once()
+        except Exception as e:
+            print(f"Fehler beim Archivieren leerer Rollen: {e}")
         time.sleep(RECONCILE_SECONDS)
 
 

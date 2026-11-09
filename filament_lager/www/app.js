@@ -340,7 +340,8 @@ async function load(quiet) {
       api("brands").catch(() => ({})), api("api/inventory/locations").catch(() => []),
       api("places").then((p) => { state.places = p || {}; }).catch(() => {}),
       api("api/inventory/usage?limit=500").catch(() => []), api("printers").catch(() => null),
-      api("usage-edits").catch(() => null), api("shop-meta").then((m) => { state.shopMeta = m || {}; }).catch(() => {})]);
+      api("usage-edits").catch(() => null), api("shop-meta").then((m) => { state.shopMeta = m || {}; }).catch(() => {}),
+      api("auto-archived").then((m) => { state.autoArchived = m || {}; }).catch(() => {})]);
     state.brands = brands;
     state.locations = new Map((Array.isArray(locations) ? locations : []).map((l) => [l.id, l.name]));
     state.locationList = Array.isArray(locations) ? locations : [];
@@ -516,6 +517,7 @@ function render() {
   renderChips();
   renderStock();
   renderShop();
+  renderArchive();
   renderBrands();
   renderPlaces();
   renderLists();
@@ -990,11 +992,112 @@ async function addToCart(g) {
 
 async function receive(item) {
   const st = stockFor(item);
-  const spool = st.match ? spoolFrom(st.match.template) : { material: item.material, subtype: item.subtype, brand: item.brand, color_name: item.color_name, label_weight: 1000, weight_used: 0 };
+  const old = st.match ? null : archivedFor(item);
+  const spool = st.match ? spoolFrom(st.match.template) : old ? spoolFrom(old) : { material: item.material, subtype: item.subtype, brand: item.brand, color_name: item.color_name, label_weight: 1000, weight_used: 0 };
   if (!(await confirmBooking(spool, item.quantity_spools || 1, " Der Eintrag auf der Einkaufsliste wird als eingetroffen markiert."))) return;
   await addSpools(spool, item.quantity_spools || 1);
   await api(`api/inventory/shopping-list/${item.id}/status`, { method: "PATCH", body: JSON.stringify({ status: "received" }) });
   toast(`${item.quantity_spools}× ${item.color_name || item.material} ins Lager gebucht`);
+}
+
+// ---------- Archiv ----------
+// Ausgebuchte Rollen aus Bambuddy (archived_at), je Sorte zusammengefasst wie im Lager.
+
+const archivedSpools = () => [...(state.allSpools?.values() || [])].filter((s) => s.archived_at);
+
+function archivedFor(item) {
+  // Neueste archivierte Rolle passend zu einem Einkaufslisten-Eintrag, als Vorlage für eine volle Rolle.
+  return archivedSpools().filter((s) => norm(s.material) === norm(item.material)
+    && (!item.brand || norm(s.brand) === norm(item.brand)) && (!item.subtype || norm(s.subtype) === norm(item.subtype))
+    && (!item.color_name || norm(s.color_name) === norm(item.color_name)))
+    .sort((a, b) => (b.archived_at || "").localeCompare(a.archived_at || ""))[0] || null;
+}
+
+function archiveGroups() {
+  const map = new Map();
+  for (const s of archivedSpools()) {
+    const key = groupKey(s);
+    let g = map.get(key);
+    if (!g) map.set(key, g = { key, brand: s.brand || "Ohne Hersteller", material: s.material || "", subtype: s.subtype || "", color_name: s.color_name || "", rgba: null, spools: [] });
+    g.spools.push(s);
+  }
+  for (const g of map.values()) {
+    g.spools.sort((a, b) => (b.archived_at || "").localeCompare(a.archived_at || ""));
+    g.last = g.spools[0].archived_at || "";
+    g.rgba = g.spools.find((s) => /^[0-9a-f]{6}/i.test(s.rgba || ""))?.rgba || null;
+    g.inStock = state.groups.find((x) => x.key === g.key) || null;
+  }
+  return [...map.values()].sort((a, b) => b.last.localeCompare(a.last));
+}
+
+function fillArchiveSelect(id, all, values) {
+  const sel = $(id);
+  const cur = sel.value;
+  const opts = [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, "de"));
+  sel.innerHTML = `<option value="">${all}</option>` + opts.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  sel.value = opts.includes(cur) ? cur : "";
+}
+
+function renderArchive() {
+  const groups = archiveGroups();
+  $("#archiveCount").textContent = groups.length ? archivedSpools().length : "";
+  fillArchiveSelect("#archiveBrand", "Alle Hersteller", groups.map((g) => g.brand));
+  fillArchiveSelect("#archiveMaterial", "Alle Materialien", groups.map((g) => g.material));
+  const brand = $("#archiveBrand").value, mat = $("#archiveMaterial").value;
+  const words = norm($("#archiveSearch").value).split(/\s+/).filter(Boolean);
+  const list = groups.filter((g) => (!brand || g.brand === brand) && (!mat || g.material === mat)
+    && words.every((w) => norm([g.brand, g.material, g.subtype, g.color_name].join(" ")).includes(w)));
+  if (!list.length) {
+    $("#archiveList").innerHTML = `<div class="emptyState">${groups.length ? "Nichts gefunden." : "Noch keine Rollen im Archiv."}</div>`;
+    return;
+  }
+  const open = new Set([...document.querySelectorAll("#archiveList details[open]")].map((d) => d.dataset.key));
+  $("#archiveList").innerHTML = list.map((g) => {
+    const cart = cartFor(g);
+    const n = g.spools.length;
+    const rolls = g.spools.map((s) => {
+      const auto = state.autoArchived?.[String(s.id)];
+      const left = remaining(s);
+      return `<div class="archiveRoll"><span class="grow">Rolle ${s.id} · ausgebucht ${fmtDate(s.archived_at)}${auto ? " · automatisch, weil leer" : ""}
+        <span class="muted">· ${left > 0 ? kg(left) + " übrig" : "leer"}${s.label_weight ? " von " + kg(s.label_weight) : ""}</span></span>
+        <button class="need-rolls_remove" data-act="restoreRoll" data-roll="${s.id}" title="Zurück ins Lager">Wiederherstellen</button></div>`;
+    }).join("");
+    return `<details class="archiveItem" data-key="${esc(g.key)}"${open.has(g.key) ? " open" : ""}>
+      <summary>
+        <span class="swatch" style="width:32px;height:32px;background:${swatchBg(g.rgba)}"></span>
+        ${g.brand !== "Ohne Hersteller" ? logoHtml(g.brand, "small") : ""}
+        <div class="shopMain"><b>${esc(g.color_name || "Ohne Farbname")}</b> ${esc([g.material, g.subtype].filter(Boolean).join(" "))}
+          <div class="muted">${esc(g.brand)} · ${n} ${n === 1 ? "Rolle" : "Rollen"} im Archiv · zuletzt ${fmtDate(g.last)}</div></div>
+        <div class="shopStock">Im Lager: <b>${g.inStock ? g.inStock.shelf : 0}</b><div class="muted">${g.inStock ? kg(g.inStock.remaining) + " übrig" : "nicht mehr vorhanden"}</div></div>
+        <button class="need-shop_edit" data-act="archiveCart" data-key="${esc(g.key)}" title="Volle Rolle auf die Einkaufsliste">${ic("cart")}${cart ? ` <span class="badge cart">${cart.quantity_spools}</span>` : ""}</button>
+      </summary>
+      <div class="archiveRolls">${rolls}</div>
+    </details>`;
+  }).join("");
+}
+
+for (const id of ["#archiveSearch", "#archiveBrand", "#archiveMaterial"]) $(id).addEventListener(id === "#archiveSearch" ? "input" : "change", renderArchive);
+
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("#archiveList button[data-act]");
+  if (!btn) return;
+  // Knopf in der Zusammenfassung: nicht gleichzeitig auf- und zuklappen.
+  ev.preventDefault();
+  if (btn.dataset.act === "archiveCart") {
+    const g = archiveGroups().find((x) => x.key === btn.dataset.key);
+    if (g) run(() => addToCart(g));
+  } else if (btn.dataset.act === "restoreRoll") {
+    const s = state.allSpools?.get(Number(btn.dataset.roll));
+    if (s) run(() => restoreRoll(s));
+  }
+});
+
+async function restoreRoll(s) {
+  const ok = await askConfirm("Wiederherstellen", sortLine(s, 1) +
+    `<p class="confirmNote">Die Rolle kommt mit ${kg(remaining(s))} zurück ins Lager.${remaining(s) <= 0 ? " Sie ist leer und wird ohne Drucker-Zuordnung gleich wieder archiviert, außer du trägst vorher unter ☰ ein neues Restgewicht ein." : ""}</p>`, "Wiederherstellen");
+  if (!ok) return;
+  await api(`api/inventory/spools/${s.id}/restore`, { method: "POST" });
+  toast(`Rolle ${s.id} wieder im Lager`);
 }
 
 async function run(fn) {
@@ -1011,7 +1114,7 @@ document.addEventListener("click", (ev) => {
   if (!btn) return;
   if (btn.classList.contains("tab")) {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === btn));
-    for (const name of ["stock", "shop", "usage", "brands", "places", "users", "design"]) $("#tab-" + name).classList.toggle("hidden", btn.dataset.tab !== name);
+    for (const name of ["stock", "shop", "usage", "archive", "brands", "places", "users", "design"]) $("#tab-" + name).classList.toggle("hidden", btn.dataset.tab !== name);
     if (btn.dataset.tab === "users") loadUsers();
     if (btn.dataset.tab === "usage") loadUnbooked();
     try { localStorage.setItem("tab", btn.dataset.tab); } catch { /* egal */ }

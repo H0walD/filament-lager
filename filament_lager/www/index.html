@@ -26,6 +26,7 @@
     <button class="tab active need-tab_stock" data-tab="stock">Lager <span id="stockCount" class="pill"></span></button>
     <button class="tab need-tab_shop" data-tab="shop">Einkaufsliste <span id="shopCount" class="pill"></span></button>
     <button class="tab need-tab_usage" data-tab="usage">Verbrauch</button>
+    <button class="tab need-tab_stock" data-tab="archive">Archiv <span id="archiveCount" class="pill"></span></button>
     <button class="tab need-tab_brands" data-tab="brands">Hersteller <span id="brandCount" class="pill"></span></button>
     <button class="tab need-tab_places" data-tab="places">Lagerplätze</button>
     <button class="tab need-admin" data-tab="users">Benutzer</button>
@@ -75,6 +76,18 @@
     <div class="usageListHead"><h3 class="usageHead">Druckaufträge</h3>
       <button type="button" id="manualJob" class="need-usage_edit">+ Druck von Hand nachtragen</button></div>
     <div id="usageList"></div>
+  </section>
+
+  <section id="tab-archive" class="hidden">
+    <div class="toolbar">
+      <input id="archiveSearch" type="search" placeholder="Suchen: Farbe, Material, Typ, Hersteller …">
+    </div>
+    <div class="filters archiveFilters">
+      <label class="msWrap"><span class="msLabel">Hersteller</span><select id="archiveBrand"></select></label>
+      <label class="msWrap"><span class="msLabel">Material</span><select id="archiveMaterial"></select></label>
+    </div>
+    <p class="muted archiveNote">Ausgebuchte und leere Rollen. Leere Rollen kommen automatisch hierher, sobald sie nicht mehr im Drucker stecken. Der Warenkorb setzt eine volle Rolle derselben Sorte auf die Einkaufsliste.</p>
+    <div id="archiveList"></div>
   </section>
 
   <section id="tab-shop" class="hidden">

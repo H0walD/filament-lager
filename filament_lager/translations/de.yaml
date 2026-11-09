@@ -14,3 +14,6 @@ configuration:
   standard_recht:
     name: Standard-Recht
     description: Vorgabe für neue Benutzer, bis in der App eine Standardgruppe gewählt ist.
+  leere_rollen_archivieren:
+    name: Leere Rollen archivieren
+    description: Rollen mit 0 g kommen automatisch ins Archiv, sobald sie keinem Drucker-Platz mehr zugeordnet sind.

@@ -1,5 +1,5 @@
 name: Filament-Lager
-version: "1.8.1"
+version: "1.9.0"
 slug: filament_lager
 description: Übersichtliche Filament-Lagerverwaltung für Bambuddy mit Einkaufsliste, Hersteller-Logos und Benutzerrechten
 url: https://github.com/H0walD/filament-lager
@@ -20,6 +20,7 @@ options:
   api_key: ""
   benutzer: []
   standard_recht: ansehen
+  leere_rollen_archivieren: true
 schema:
   bambuddy_url: url
   api_key: password
@@ -27,3 +28,4 @@ schema:
     - name: str
       recht: list(kein|ansehen|erfassen|bearbeiten|admin)
   standard_recht: list(kein|ansehen|erfassen|bearbeiten|admin)
+  leere_rollen_archivieren: bool
