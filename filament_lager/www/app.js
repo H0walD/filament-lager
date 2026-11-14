@@ -511,6 +511,7 @@ function renderChipBox() {
 }
 
 function render() {
+  renderPrinterBox();
   renderChipBox();
   renderSlotBox();
   if ($("#rollDialog").open && rollGroupKey) renderRolls();
@@ -1773,22 +1774,139 @@ function openLoad({ group, spool, slot }) {
     // Passende Rollen zuerst: gleiches Material, ähnliche Farbe.
     const type = norm(slot.type);
     const fit = (s) => (type && (type.includes(norm(s.material)) ? 0 : 200)) + hexDistance(s.rgba, slot.rgba);
-    rolls = state.spools.filter((s) => !state.inPrinter?.has(s.id)).sort((a, b) => fit(a) - fit(b));
+    rolls = state.spools.filter((s) => !s.archived_at && !state.inPrinter?.has(s.id)).sort((a, b) => fit(a) - fit(b));
   } else {
     rolls = preferredRoll(spool ? [spool] : group.spools.filter((s) => !state.inPrinter?.has(s.id)));
   }
   if (!rolls.length) return toast("Keine Rolle im Lager zum Einlegen");
-  loadCtx = { slot };
   const f = $("#loadForm");
-  f.roll.innerHTML = rolls.map(rollOption).join("");
+  // Filter nur, wenn aus allen Rollen gewählt wird (Platz ohne Zuordnung) und es etwas zu filtern gibt.
+  const filters = !!slot && (new Set(rolls.map((s) => s.brand || "")).size > 1 || new Set(rolls.map((s) => s.material || "")).size > 1);
+  loadCtx = { slot, rolls, filters, matTouched: false };
+  $("#loadFilters").classList.toggle("hidden", !filters);
+  f.fbrand.value = "";
+  f.fmat.value = "";
   // Freie Plätze zuerst anbieten.
   const order = (x) => (assignmentAt(x) ? 2 : x.present ? 1 : 0);
   f.slot.innerHTML = [...slots].sort((a, b) => order(a) - order(b)).map(slotOption).join("");
   if (slot) f.slot.value = `${slot.printer_id}:${slot.ams_id}:${slot.tray_id}`;
-  f.roll.disabled = rolls.length === 1;
-  rollPick(f.roll);
+  if (filters) {
+    loadCtx.brand = "";
+    loadCtx.mat = materialForSlot(slot, rolls);
+  }
+  fillLoadRolls();
   $("#loadError").textContent = "";
   $("#loadDialog").showModal();
+}
+
+// Material, das der Drucker für den Platz meldet („PLA Basic“, „PETG HF“ …), einem Lager-Material zuordnen.
+function materialForSlot(slot, rolls) {
+  const type = norm(slot?.type);
+  if (!type) return "";
+  const mats = [...new Set(rolls.map((s) => s.material).filter(Boolean))];
+  const exact = mats.find((m) => norm(m) === type);
+  if (exact) return exact;
+  const part = mats.filter((m) => type.includes(norm(m))).sort((a, b) => b.length - a.length);
+  return part[0] || "";
+}
+
+// Rollenliste im Einlegen-Dialog nach Hersteller und Material filtern. Jede Auswahl zeigt nur, was zur anderen passt.
+function fillLoadRolls() {
+  const f = $("#loadForm");
+  const { rolls, filters } = loadCtx;
+  let list = rolls;
+  if (filters) {
+    const byBrand = (s) => !loadCtx.brand || (s.brand || "") === loadCtx.brand;
+    const byMat = (s) => !loadCtx.mat || (s.material || "") === loadCtx.mat;
+    const options = (pool, field, current, empty) => {
+      const counts = new Map();
+      for (const s of pool) counts.set(s[field] || "", (counts.get(s[field] || "") || 0) + 1);
+      if (current && !counts.has(current)) counts.set(current, 0);
+      const keys = [...counts.keys()].sort((a, b) => (a || "~").localeCompare(b || "~", "de"));
+      return `<option value="">Alle (${pool.length})</option>` + keys.map((k) => `<option value="${esc(k)}">${esc(k || empty)} (${counts.get(k)})</option>`).join("");
+    };
+    f.fbrand.innerHTML = options(rolls.filter(byMat), "brand", loadCtx.brand, "Ohne Hersteller");
+    f.fmat.innerHTML = options(rolls.filter(byBrand), "material", loadCtx.mat, "Ohne Material");
+    f.fbrand.value = loadCtx.brand;
+    f.fmat.value = loadCtx.mat;
+    list = rolls.filter((s) => byBrand(s) && byMat(s));
+  }
+  const keep = f.roll.value;
+  f.roll.innerHTML = list.length ? list.map(rollOption).join("") : `<option value="">Keine Rolle passt zum Filter</option>`;
+  if (keep && list.some((s) => String(s.id) === keep)) f.roll.value = keep;
+  f.roll.disabled = list.length <= 1;
+  rollPick(f.roll);
+}
+
+$("#loadForm").fbrand.addEventListener("change", (ev) => { loadCtx.brand = ev.target.value; fillLoadRolls(); });
+$("#loadForm").fmat.addEventListener("change", (ev) => { loadCtx.mat = ev.target.value; loadCtx.matTouched = true; fillLoadRolls(); });
+$("#loadForm").slot.addEventListener("change", (ev) => {
+  // Anderer Platz gewählt: Material neu vorschlagen, solange man es nicht selbst eingestellt hat.
+  if (!loadCtx?.filters || loadCtx.matTouched) return;
+  const slot = slotByKey(ev.target.value);
+  if (slot && slot.present && slot.type) { loadCtx.mat = materialForSlot(slot, loadCtx.rolls); fillLoadRolls(); }
+});
+
+// ---------- Druckerbelegung im Lager: welche Rolle steckt wo ----------
+
+function unitName(x) {
+  if (x.ams_id === 255) return "Extern";
+  if (x.ams_id >= 128) return "AMS HT " + (x.ams_id - 127);
+  return "AMS " + String.fromCharCode(65 + x.ams_id);
+}
+
+function renderPrinterBox() {
+  const box = $("#printerBox");
+  const printers = (state.printers || []).filter((p) => p.slots.length);
+  if (!printers.length || !has("tab_stock")) return box.classList.add("hidden");
+  let collapsed = false;
+  try { collapsed = localStorage.getItem("printerBox") === "zu"; } catch { /* egal */ }
+  const canLoad = has("printer");
+  const cell = (x) => {
+    const a = assignmentAt(x);
+    const s = a && (state.spools.find((r) => r.id === a.spool_id) || a.spool);
+    const short = x.ams_id < 128 ? `Slot ${x.tray_id + 1}` : x.ams_id === 255 && x.name !== "Externe Spule" ? x.name.replace("Externe Spule", "Spule") : "";
+    let body, cls = "", act = "", title = "";
+    if (s) {
+      const g = state.groups.find((y) => y.key === groupKey(s));
+      body = `${dot(s.rgba, 26)}<span class="slotText"><b>${esc(s.color_name || s.material || "Rolle")}</b>
+        <span class="muted">${esc([s.brand, s.material, s.subtype].filter(Boolean).join(" "))}</span>
+        <span class="muted">${kg(remaining(s))}${hasChip(s) ? " · Chip" : ""}</span></span>`;
+      if (g) { act = `data-act="rolls" data-key="${esc(g.key)}"`; title = "Rollen dieser Sorte ansehen"; }
+    } else if (x.present) {
+      cls = x.chip ? "" : "open";
+      body = `${dot(x.rgba, 26)}<span class="slotText"><b>${esc(x.type || "Unbekannt")}</b>
+        <span class="${x.chip ? "muted" : "warnText"}">${x.chip ? "Chip-Rolle" : "ohne Zuordnung"}</span></span>`;
+      if (canLoad) { act = `data-act="assignSlot" data-slot="${x.printer_id}:${x.ams_id}:${x.tray_id}"`; title = "Lager-Rolle zuordnen"; }
+    } else {
+      cls = "free";
+      body = `<span class="swatch none" style="width:26px;height:26px"></span><span class="slotText"><span class="muted">leer</span></span>`;
+      if (canLoad) { act = `data-act="assignSlot" data-slot="${x.printer_id}:${x.ams_id}:${x.tray_id}"`; title = "Rolle einlegen"; }
+    }
+    const inner = `${short ? `<span class="slotNo">${esc(short)}</span>` : ""}<span class="slotBody">${body}</span>`;
+    return act ? `<button type="button" class="slotCell ${cls}" ${act} title="${title}">${inner}</button>` : `<div class="slotCell ${cls}">${inner}</div>`;
+  };
+  const printerHtml = (p) => {
+    const hasAms = p.slots.some((x) => x.ams_id !== 255);
+    // Leere externe Spule bei Druckern mit AMS weglassen, sie meldet oft nur den letzten Filamenttyp.
+    const slots = p.slots.filter((x) => x.ams_id !== 255 || !hasAms || assignmentAt(x) || (x.present && x.chip));
+    const units = new Map();
+    for (const x of slots) {
+      const u = unitName(x);
+      if (!units.has(u)) units.set(u, []);
+      units.get(u).push(x);
+    }
+    const used = slots.filter((x) => assignmentAt(x)).length;
+    return `<div class="printerCard">
+      <div class="printerHead">${printerIcon(p.id)}<b>${esc(p.name)}</b>
+        <span class="muted">${used} von ${slots.length} ${slots.length === 1 ? "Platz" : "Plätzen"} mit Lager-Rolle${p.connected ? "" : " · offline"}</span></div>
+      ${[...units].map(([u, list]) => `<div class="amsRow"><span class="amsName">${esc(u)}</span><div class="slotGrid">${list.map(cell).join("")}</div></div>`).join("")}
+    </div>`;
+  };
+  box.innerHTML = `<div class="chipHead"><h3>Im Drucker</h3>
+      <button type="button" data-act="togglePrinters">${collapsed ? "Anzeigen" : "Ausblenden"}</button></div>` +
+    (collapsed ? "" : printers.map(printerHtml).join(""));
+  box.classList.remove("hidden");
 }
 
 async function assignRoll(spool, slot) {
@@ -1803,7 +1921,8 @@ $("#loadForm").addEventListener("submit", async (ev) => {
   const f = ev.target;
   const spool = state.spools.find((s) => String(s.id) === f.roll.value);
   const slot = slotByKey(f.slot.value);
-  if (!spool || !slot) return;
+  if (!spool) { $("#loadError").textContent = "Keine Rolle gewählt. Filter lockern, damit Rollen erscheinen."; return; }
+  if (!slot) return;
   const current = assignmentAt(slot);
   const replaced = current && current.spool_id !== spool.id
     ? ` Dort ist bisher <b>${esc(rollName(current.spool || state.spools.find((s) => s.id === current.spool_id) || {}))}</b> eingetragen, diese Rolle kommt zurück ins Lager.` : "";
@@ -1958,6 +2077,11 @@ document.addEventListener("click", (ev) => {
   else if (act === "assignSlot") {
     const slot = slotByKey(btn.dataset.slot);
     if (slot) openLoad({ slot });
+  }
+  else if (act === "togglePrinters") {
+    let zu = false;
+    try { zu = localStorage.getItem("printerBox") === "zu"; localStorage.setItem("printerBox", zu ? "auf" : "zu"); } catch { /* egal */ }
+    renderPrinterBox();
   }
 });
 

@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.10.0
+
+- Neu im Lager oben: „Im Drucker“ zeigt je Drucker und AMS jeden Platz mit Farbe, Sorte und Restgewicht der eingelegten Rolle. Plätze ohne Zuordnung sind orange markiert, leere gestrichelt. Antippen öffnet die Rollen der Sorte bzw. das Einlegen. Mit „Ausblenden“ zuklappbar (pro Gerät gemerkt)
+- „In Drucker einlegen“ über „Lager-Rolle zuordnen“: neue Filter Hersteller und Material über der Rollenauswahl. Das Material ist aus dem gemeldeten Material des Platzes vorausgewählt (z. B. „PLA Basic“ → PLA), die Zahlen zeigen, wie viele Rollen passen
+- Archivierte Rollen erscheinen beim Zuordnen eines Platzes nicht mehr in der Auswahl
+
 ## 1.9.1
 
 - Archiv: Rollen lassen sich mit dem Papierkorb endgültig löschen (mit Bestätigung, braucht das Recht „Rollen ausbuchen/löschen“)
