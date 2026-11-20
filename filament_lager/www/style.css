@@ -427,34 +427,3 @@ select.pickHidden { display: none; }
 @media (max-width: 520px) { #unbookedBox .unbookedActs { flex-basis: 100%; padding-left: 30px; } }
 .usageListHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .usageListHead button { font-size: calc(0.8125rem * var(--fs-text)); padding: 5px 10px; }
-
-/* Druckerbelegung im Lager */
-.printerBox { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
-.printerBox h3 { margin: 0; font-size: calc(0.875rem * var(--fs-title)); }
-.printerCard { display: flex; flex-direction: column; gap: 6px; }
-.printerCard + .printerCard { border-top: 1px solid var(--border); padding-top: 10px; }
-.printerHead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: calc(0.875rem * var(--fs-text)); }
-.printerHead .muted { font-size: calc(0.75rem * var(--fs-desc)); }
-.amsRow { display: flex; gap: 8px; align-items: flex-start; }
-.amsName { flex: 0 0 64px; font-size: calc(0.75rem * var(--fs-desc)); color: var(--muted); padding-top: 8px; }
-.slotGrid { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; min-width: 0; }
-.slotCell { display: flex; flex-direction: column; align-items: stretch; gap: 2px; text-align: left; background: transparent; color: var(--text);
-  border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; font: inherit; min-width: 0; }
-button.slotCell { cursor: pointer; }
-button.slotCell:hover { border-color: var(--muted); }
-.slotCell.open { border-left: 3px solid var(--warn); }
-.slotCell.free { border-style: dashed; }
-.slotNo { font-size: calc(0.6875rem * var(--fs-desc)); color: var(--muted); }
-.slotBody { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.slotBody .swatch { flex: none; }
-.slotText { display: flex; flex-direction: column; min-width: 0; font-size: calc(0.8125rem * var(--fs-text)); line-height: 1.25; }
-.slotText > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.slotText .muted { font-size: calc(0.75rem * var(--fs-desc)); }
-.warnText { color: var(--warn); font-size: calc(0.75rem * var(--fs-desc)); }
-.loadFilters select { width: 100%; }
-@media (max-width: 520px) {
-  .amsRow { flex-direction: column; gap: 4px; }
-  .amsName { flex: none; padding-top: 0; }
-  .slotGrid { width: 100%; grid-template-columns: 1fr 1fr; }
-  .loadFilters { flex-direction: row !important; }
-}
