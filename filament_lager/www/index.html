@@ -46,6 +46,7 @@
       </div>
       <button id="addNew" class="primary need-rolls_add">+ Neues Material</button>
     </div>
+    <div id="printerBox" class="printerBox hidden"></div>
     <div id="chipBox" class="chipBox hidden"></div>
     <div id="slotBox" class="chipBox hidden"></div>
     <div class="filters">
@@ -299,6 +300,10 @@
   <form id="loadForm" method="dialog">
     <h2>In Drucker einlegen</h2>
     <p class="muted">Bambuddy zieht den Verbrauch nur von Rollen ab, die einem Platz zugeordnet sind. Rollen mit Chip ordnet Bambuddy selbst zu.</p>
+    <div class="row loadFilters" id="loadFilters">
+      <label>Hersteller<select name="fbrand"></select></label>
+      <label>Material<select name="fmat"></select></label>
+    </div>
     <label>Rolle<select name="roll"></select></label>
     <label>Platz im Drucker<select name="slot"></select></label>
     <p id="loadError" class="error"></p>
